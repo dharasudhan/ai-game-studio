@@ -82,7 +82,7 @@ one repo at once). Outside `work_hours`, or once `daily_run_cap` / `daily_token_
 4. **IMAP mailbox (optional)**: put `STUDIO_IMAP_HOST/PORT/USER/PASSWORD` in `.env` (for Gmail an app password),
    then Settings > `feedback_imap_enabled` = on. The folder is opened read-only and messages are fetched with
    `BODY.PEEK`, so nothing is marked read, moved or answered.
-5. **Linking to games**: by package name (generated games use `com.studio.<slug>`), slug, sub-folder, the
+5. **Linking to games**: by package name (generated games use `com.ottranstudios.<slug>`), slug, sub-folder, the
    game's title in an email subject, or `feedback_game_map` (e.g. `{"com.ferryout.game":"ferry-out","ferry":"ferry-out"}`).
    Unlinked items can be linked on the Feedback page.
 

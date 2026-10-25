@@ -10,7 +10,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-FIXTURE = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "reviews_com.studio.orbit_hopper_202610.csv"
+FIXTURE = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "reviews_com.ottranstudios.orbit_hopper_202610.csv"
 
 
 def seed(home: Path):
