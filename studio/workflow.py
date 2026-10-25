@@ -264,7 +264,7 @@ class Studio(SupportMixin, ManagementMixin):
         (repo / "docs").mkdir(exist_ok=True)
         (repo / "docs" / "concept.md").write_text(concept_md)
         gitops.init_repo(repo)
-        self.set_game(g["id"], package="com.studio." + slug.replace("-", "_"))
+        self.set_game(g["id"], package="com.ottranstudios." + slug.replace("-", "_"))
         return slug, repo
 
     # --------------------------------------------------------------- planning

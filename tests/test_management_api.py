@@ -144,8 +144,8 @@ def test_feedback_api_upload_filter_edit_flag(studio, fake):
     st = studio
     c = client(st)
     gid = released_game(st)
-    r = c.post("/api/feedback/upload", files={"file": (FIX.joinpath("reviews_com.studio.orbit_hopper_202610.csv").name,
-                                                         FIX.joinpath("reviews_com.studio.orbit_hopper_202610.csv").read_bytes())}, headers=H)
+    r = c.post("/api/feedback/upload", files={"file": (FIX.joinpath("reviews_com.ottranstudios.orbit_hopper_202610.csv").name,
+                                                         FIX.joinpath("reviews_com.ottranstudios.orbit_hopper_202610.csv").read_bytes())}, headers=H)
     assert r.status_code == 200
     assert c.post("/api/feedback/upload", files={"file": ("x.exe", b"x")}, headers=H).status_code == 400
     assert c.post("/api/feedback/ingame", json={"game": "orbit-hopper", "message": "pls add dark mode"}, headers=H).status_code == 200

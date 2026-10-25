@@ -13,7 +13,7 @@ from studio.worker import maybe_scan_feedback, run_until_idle
 from conftest import pending, released_game
 
 FIX = Path(__file__).parent / "fixtures"
-PLAY = FIX / "reviews_com.studio.orbit_hopper_202610.csv"
+PLAY = FIX / "reviews_com.ottranstudios.orbit_hopper_202610.csv"
 
 
 def test_play_csv_utf16_parsed_by_column_name(tmp_path):
@@ -21,7 +21,7 @@ def test_play_csv_utf16_parsed_by_column_name(tmp_path):
     assert len(items) == 4  # the star-only review (no text) is skipped
     first = items[0]
     assert first.source == "play" and first.rating == 1 and first.app_version == "1.0.2"
-    assert first.game_hint == "com.studio.orbit_hopper" and first.external_id.endswith("id=r1")
+    assert first.game_hint == "com.ottranstudios.orbit_hopper" and first.external_id.endswith("id=r1")
     assert first.reply_channel == "play" and first.device == "a52q"
 
 
@@ -70,7 +70,7 @@ def drop(st, name, content, sub=""):
 def test_ingest_classify_group_and_draft_replies(studio, fake):
     st = studio
     gid = released_game(st)
-    assert st.game(gid)["package"] == "com.studio.orbit_hopper"
+    assert st.game(gid)["package"] == "com.ottranstudios.orbit_hopper"
     shutil.copy(PLAY, st.feedback_dir() / PLAY.name)
     drop(st, "dupe.txt", "Game crashes every time I open level 3. Unplayable", "orbit-hopper")  # different author -> kept
     drop(st, "abuse.txt", "you idiot, free coins at telegram.me/spam", "orbit-hopper")
