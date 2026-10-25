@@ -1,0 +1,19 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Studio intro (web) demo</title>
+<style>html,body{margin:0;height:100%;background:#123;color:#fff;font-family:system-ui}#game{display:flex;align-items:center;justify-content:center;height:100%;font-size:32px}</style>
+</head><body>
+<div id="game">Your three.js game here</div>
+<script src="brand.js"></script>
+<script src="intro.js"></script>
+<script>
+  // demo: fake asset loading that takes ~4 s, so the loading screen shows after the intro
+  const ld = StudioIntro.loader({tips: ["Tip: tap to skip the intro", "Each game sets its own tips and tint"], colors: {bg_top: "#E8F6FF", bg_bottom: "#B9E2FF"}});
+  const q = new URLSearchParams(location.search);
+  const loadMs = +(q.get("load") || 4000);
+  const ready = new Promise(res => { const t0 = performance.now(); (function tick(){ const p = (performance.now() - t0) / loadMs; ld.setProgress(p); if (p >= 1) res(); else setTimeout(tick, 50); })(); });
+  if (q.has("freeze")) StudioIntro.play({freezeAt: +q.get("freeze"), sound: false});
+  else if (q.has("loading")) { ld.show(); ld.setProgress(+q.get("loading")); }
+  else StudioIntro.play({ready, loader: ld}).then(() => { document.title = "DONE"; console.log("intro+loading done"); });
+</script>
+</body></html>

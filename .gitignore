@@ -1,0 +1,26 @@
+# secrets and local environment
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+# runtime data: SQLite db, worktrees, logs, games, player feedback (personal data)
+data/
+games/
+feedback/
+logs/
+*.log
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+# never commit signing keys
+*.keystore
+*.jks
+*.p12
+# caches
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store

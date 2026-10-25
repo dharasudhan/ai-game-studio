@@ -1,0 +1,6 @@
+fastapi>=0.110
+uvicorn>=0.29
+python-multipart>=0.0.9
+google-genai>=1.0      # only used by the optional "genai" engine (GEMINI_API_KEY)
+pytest>=8.0
+httpx>=0.27            # FastAPI TestClient

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Optional auto-start at login. Replace __STUDIO_DIR__ with the absolute path of local-studio, then:
+     cp launchd/com.aigamestudio.local.plist ~/Library/LaunchAgents/
+     launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.aigamestudio.local.plist
+     Stop:  launchctl bootout gui/$(id -u)/com.aigamestudio.local -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.aigamestudio.local</string>
+  <key>ProgramArguments</key>
+  <array><string>/bin/bash</string><string>__STUDIO_DIR__/run.sh</string></array>
+  <key>WorkingDirectory</key><string>__STUDIO_DIR__</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/Users/__USER__/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+  <key>ThrottleInterval</key><integer>30</integer>
+  <key>StandardOutPath</key><string>__STUDIO_DIR__/data/logs/studio.out.log</string>
+  <key>StandardErrorPath</key><string>__STUDIO_DIR__/data/logs/studio.err.log</string>
+</dict>
+</plist>
