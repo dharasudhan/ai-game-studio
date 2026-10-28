@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.1 - 2026-10-28 - launch-law checks
+### Added
+- Six launch-law rows in the audit checklist: COPPA age gate, bundled fonts (no Google Fonts/CDN), session replay
+  consent (CIPA/GDPR), marketing email unsubscribe + postal address (CAN-SPAM), renewal terms beside the buy button,
+  and user uploads (EU DSA notice-and-action, US DMCA agent).
+- Automatic checks: any runtime font/script load from Google Fonts or a public CDN is a Gate 5 blocker; a
+  session-replay SDK (Hotjar, FullStory, LogRocket, Clarity...) is flagged for consent + input masking.
+- The QA/Compliance prompt includes the six checks. Tests: 74 (2 new).
+
 ## 1.3.0 - 2026-10-28 - multi-model providers, setup wizard, launch-audit gate
 ### Added
 - **Pluggable provider layer** (`studio/engines.py`): one interface (`run`, `test`, `name`, `agentic`, `model`) for

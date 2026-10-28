@@ -38,7 +38,47 @@ COMPLIANCE_CHECKLIST = [
     ("policy", "Release AAB signed with the upload key, versionCode bumped, target SDK 36"),
     ("policy", "Store screenshots exported as JPEG (the Play asset picker rejected PNG), feature graphic 1024x500"),
     ("policy", "Plan for review time: Google review can take up to 7 days"),
+    # Six launch-law checks (added 1.3.1). Each one only applies if the feature exists; mark N/A otherwise.
+    ("compliance", "Kids/COPPA: no sign-up without a neutral age gate; under-13s blocked or routed to a child-safe "
+                   "flow (no personalised ads, child-directed tags)"),
+    ("compliance", "Fonts and scripts bundled: nothing loaded from Google Fonts or a CDN at runtime "
+                   "(GDPR, Munich 2022 ruling); web builds self-host fonts"),
+    ("compliance", "No session replay, keystroke or screen recording SDKs without opt-in consent and input masking "
+                   "(GDPR; California CIPA)"),
+    ("compliance", "Marketing email (if any): consent, one-click unsubscribe and a postal address in every mail "
+                   "(CAN-SPAM, GDPR/ePrivacy)"),
+    ("compliance", "Subscriptions/IAP: price, renewal period and how to cancel shown right beside the buy button; "
+                   "EU 14-day withdrawal wording for digital content"),
+    ("compliance", "User uploads (if any, incl. shared levels, names or text): report/takedown path (EU DSA "
+                   "notice-and-action) and a registered US DMCA agent ($6 at copyright.gov) before US launch"),
 ]
+
+# Runtime fetches of fonts/scripts/CSS from third-party hosts (GDPR: sends the player's IP to that host).
+REMOTE_ASSET_RE = re.compile(
+    r"https?://(?:fonts\.googleapis\.com|fonts\.gstatic\.com|use\.typekit\.net|cdn\.jsdelivr\.net|unpkg\.com|"
+    r"cdnjs\.cloudflare\.com|ajax\.googleapis\.com|code\.jquery\.com|fonts\.bunny\.net|use\.fontawesome\.com|"
+    r"kit\.fontawesome\.com)[^\s\"'<>)]*", re.I)
+REPLAY_RE = re.compile(r"(?i)\b(hotjar|fullstory|logrocket|smartlook|mouseflow|clarity\.ms|uxcam|sessionstack|"
+                       r"inspectlet|contentsquare)\b")
+_SCAN_EXT = {".gd", ".tscn", ".tres", ".cfg", ".html", ".htm", ".js", ".css", ".json", ".gradle", ".xml", ".kt", ".java"}
+
+
+def remote_asset_hits(repo: Path, limit: int = 2000) -> tuple[list[str], list[str]]:
+    """(remote font/script URLs, session-replay SDK names) found in source files, as 'path: match'."""
+    remote, replay = [], []
+    for n, p in enumerate(Path(repo).rglob("*")):
+        if n > limit * 5 or len(remote) + len(replay) > 20:
+            break
+        if not p.is_file() or p.suffix.lower() not in _SCAN_EXT or {".godot", ".git", "build", "node_modules"} & set(p.parts):
+            continue
+        try:
+            text = p.read_text(errors="ignore")[:500_000]
+        except OSError:
+            continue
+        rel = str(p.relative_to(repo))
+        remote += [f"{rel}: {m.group(0)[:80]}" for m in REMOTE_ASSET_RE.finditer(text)][:3]
+        replay += [f"{rel}: {m.group(0)}" for m in REPLAY_RE.finditer(text)][:3]
+    return remote, replay
 
 
 def _default_fetch(url: str) -> tuple[int, str]:
@@ -158,6 +198,13 @@ def deterministic_checks(repo: Path, slug: str, s: dict, release_qa: str = "", r
         consent = bool(re.search(r"(?i)\bump\b|consentinformation|consent_form|request_consent", src))
         items.append(_item("compliance", "Ads present: Google UMP consent requested before ads", "PASS" if consent else "FAIL",
                            True, "Request UMP consent before loading any ad; add a Privacy options entry in Settings"))
+    remote, replay = remote_asset_hits(repo)
+    items.append(_item("compliance", "No fonts or scripts loaded from Google Fonts/CDNs at runtime (bundled only)",
+                       "FAIL" if remote else "PASS", True,
+                       "Bundle these files and load them locally: " + "; ".join(remote[:4])))
+    items.append(_item("compliance", "No session-replay SDK (or it waits for opt-in consent with input masking)",
+                       "TODO" if replay else "PASS", False,
+                       "Found " + "; ".join(replay[:4]) + ". Remove it, or gate it behind consent and mask inputs"))
     pngs = [str(p.relative_to(repo)) for d in ("store", "marketing") for p in (repo / d).rglob("*.png")
             if (repo / d).exists() and "screenshot" in str(p).lower()]
     items.append(_item("policy", "Store screenshots are JPEG", "FAIL" if pngs else "PASS", False,

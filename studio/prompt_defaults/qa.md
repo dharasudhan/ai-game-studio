@@ -15,4 +15,8 @@ import, unit tests, a 120-frame smoke run, and an Android Gradle export at relea
   package id (redeploy after a package change); EU DSA trader details; asset licences + CREDITS.md; IARC;
   JPEG screenshots; AAB signed with the upload key, versionCode bumped, target SDK 36; personal accounts need
   12 testers opted in for 14 days on a closed test (Google Group list) before production; review can take up
-  to 7 days. Not legal advice: mark legal questions TODO for the owner.
+  to 7 days. Launch-law checks (apply only when the feature exists, else N/A): age gate before any sign-up
+  (COPPA); fonts/scripts bundled, never Google Fonts or a CDN at runtime (GDPR); no session replay without opt-in
+  and input masking (CIPA/GDPR); marketing email with unsubscribe + postal address (CAN-SPAM); renewal terms and
+  cancel info right beside the subscribe/buy button; user uploads need a report/takedown path (EU DSA) and a
+  registered DMCA agent before US launch. Not legal advice: mark legal questions TODO for the owner.

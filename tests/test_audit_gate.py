@@ -182,3 +182,32 @@ def test_new_game_repo_uses_godot47_ottran_template(studio):
         assert pat in gi
     assert "{{" not in proj + (repo / "AGENTS.md").read_text() + (repo / "CREDITS.md").read_text()
     assert scan(repo) == []
+
+
+def test_launch_law_checks_flag_remote_fonts_and_session_replay(tmp_path):
+    """Tweet-driven 1.3.1 additions: remote Google Fonts/CDN = blocker, session replay SDK = TODO, six checklist rows."""
+    repo = tmp_path / "g"
+    (repo / "web").mkdir(parents=True)
+    (repo / "web" / "index.html").write_text(
+        '<link href="https://fonts.googleapis.com/css2?family=Inter" rel="stylesheet">\n'
+        '<script src="https://static.hotjar.com/c/hotjar.js"></script>\n')
+    s = {"package_prefix": "com.ottranstudios", "play_target_sdk": "36", "contact_email": "ottranstudios@gmail.com"}
+    items = deterministic_checks(repo, "g", s, "", released_code=0, fetch=lambda url: (200, ""))
+    by = {i["check"]: i for i in items}
+    fonts = by["No fonts or scripts loaded from Google Fonts/CDNs at runtime (bundled only)"]
+    assert fonts["verdict"] == "FAIL" and fonts["blocker"] and "fonts.googleapis.com" in fonts["fix"]
+    replay = by["No session-replay SDK (or it waits for opt-in consent with input masking)"]
+    assert replay["verdict"] == "TODO" and "hotjar" in replay["fix"].lower()
+    text = json.dumps(items)
+    for word in ("COPPA", "Munich", "CIPA", "CAN-SPAM", "renewal period", "DMCA agent"):
+        assert word in text
+
+
+def test_bundled_fonts_pass(tmp_path):
+    repo = tmp_path / "g"
+    (repo / "fonts").mkdir(parents=True)
+    (repo / "main.gd").write_text('var f = load("res://fonts/Inter.ttf")\n')
+    items = deterministic_checks(repo, "g", {}, "", released_code=0, fetch=lambda url: (200, ""))
+    by = {i["check"]: i["verdict"] for i in items}
+    assert by["No fonts or scripts loaded from Google Fonts/CDNs at runtime (bundled only)"] == "PASS"
+    assert by["No session-replay SDK (or it waits for opt-in consent with input masking)"] == "PASS"
