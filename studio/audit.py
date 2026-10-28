@@ -60,7 +60,7 @@ REMOTE_ASSET_RE = re.compile(
     r"kit\.fontawesome\.com)[^\s\"'<>)]*", re.I)
 REPLAY_RE = re.compile(r"(?i)\b(hotjar|fullstory|logrocket|smartlook|mouseflow|clarity\.ms|uxcam|sessionstack|"
                        r"inspectlet|contentsquare)\b")
-_SCAN_EXT = {".gd", ".tscn", ".tres", ".cfg", ".html", ".htm", ".js", ".css", ".json", ".gradle", ".xml", ".kt", ".java"}
+_SCAN_EXT = {".luau", ".lua", ".gd", ".tscn", ".tres", ".cfg", ".html", ".htm", ".js", ".css", ".json", ".gradle", ".xml", ".kt", ".java"}
 
 
 def remote_asset_hits(repo: Path, limit: int = 2000) -> tuple[list[str], list[str]]:
@@ -109,9 +109,93 @@ def _item(area: str, check: str, verdict: str, blocker: bool = False, fix: str =
             "fix": fix, "source": source}
 
 
+LAUNCH_LAW = COMPLIANCE_CHECKLIST[-6:]  # platform-neutral launch-law checks (1.3.1)
+
+PLATFORM_CHECKLISTS = {
+    "ios": [
+        ("money", "Apple Developer Program ($99/year) approved at Gate 4 and active"),
+        ("policy", "Bundle id com.ottranstudios.<slug>, build number bumped, signed by the owner in Xcode"),
+        ("policy", "App Privacy labels and PrivacyInfo.xcprivacy match every SDK in the build"),
+        ("policy", "Digital goods only through Apple IAP; no outside payment links or other-platform mentions"),
+        ("compliance", "App Tracking Transparency prompt before any tracking or personalised ads (AdMob + SKAdNetwork ids)"),
+        ("policy", "Sign in with Apple offered if any other social login exists; in-app account deletion if accounts exist"),
+        ("policy", "Age rating questionnaire, EU DSA trader status, support and privacy URLs set in App Store Connect"),
+        ("device", "Seen-it screenshots at iPhone portrait size respect the notch and home-indicator safe areas"),
+        ("policy", "TestFlight build played on a real iPhone before submission"),
+    ],
+    "roblox": [
+        ("policy", "Maturity & Compliance questionnaire answered honestly"),
+        ("policy", "Icon, thumbnails, name and description follow Roblox Community Standards"),
+        ("compliance", "All player-written text passes through TextService filtering; age-based chat rules respected"),
+        ("policy", "Money only in Robux (game passes, developer products); no outside links, payments or ad SDKs"),
+        ("policy", "Paid random items show their odds"),
+        ("device", "Server is authoritative: RemoteEvents validated and rate-limited"),
+        ("device", "DataStore saves retry and use session locking; tested by rejoining"),
+        ("device", "Playtested in Studio on phone, PC and a 2-player local server"),
+    ],
+    "web": [
+        ("performance", "First download small (aim < 20 MB), loads in under 5 s on 4G, Ottran loader shows at once"),
+        ("device", "Works on mobile Safari, Chrome Android and desktop browsers; touch, mouse and keyboard"),
+        ("compliance", "Cookie/consent banner before any ad or analytics cookie; privacy policy linked on the page"),
+        ("policy", "Portal SDK and ad rules followed (Poki / CrazyGames / itch.io current developer docs)"),
+        ("device", "Audio waits for the first tap (browser autoplay rules)"),
+    ],
+}
+
+
+def platform_checks(repo: Path, slug: str, s: dict, release_qa: str, platform: str) -> list[dict]:
+    """Launch audit for iOS / Roblox / Web games: the platform-neutral automatic checks plus that platform's list."""
+    items: list[dict] = []
+    found = scan(repo)
+    items.append(_item("compliance", "Secret scan: no keys, passwords, certificates or builds tracked in the repo",
+                       "FAIL" if found else "PASS", True,
+                       "Remove: " + ", ".join(f"{f['file']} ({f['kind']})" for f in found[:6])))
+    if platform != "roblox":
+        intro = (repo / "addons" / "studio_intro" / "studio_intro.tscn").exists()
+        items.append(_item("brand", f"{s.get('studio_name') or 'Studio'} intro + loading screen kit installed",
+                           "PASS" if intro else "FAIL", True, "Copy addons/studio_intro and make it the main scene"))
+    legal = {}
+    lp = repo / "config" / "legal.json"
+    if lp.exists():
+        try:
+            legal = json.loads(lp.read_text())
+        except json.JSONDecodeError:
+            legal = {}
+    url = str(legal.get("privacy_policy_url") or "")
+    items.append(_item("policy", "Privacy policy URL set in config/legal.json (https), hosted before release",
+                       "TODO" if url.startswith("https://") else "FAIL", not url.startswith("https://"),
+                       "Host the policy (Gate 6), then open the URL and check it names this game"))
+    want_email = s.get("contact_email") or ""
+    email = str(legal.get("contact_email") or "")
+    items.append(_item("policy", f"Contact email in the game is the studio address {want_email}",
+                       "PASS" if email and email == want_email else "FAIL", False,
+                       f"Set contact_email={want_email} in config/legal.json"))
+    items.append(_item("compliance", "CREDITS.md lists every third-party asset and its licence",
+                       "PASS" if (repo / "CREDITS.md").exists() else "FAIL", True, "Add CREDITS.md"))
+    remote, replay = remote_asset_hits(repo)
+    items.append(_item("compliance", "No fonts or scripts loaded from Google Fonts/CDNs at runtime (bundled only)",
+                       "FAIL" if remote else "PASS", True,
+                       "Bundle these files and load them locally: " + "; ".join(remote[:4])))
+    items.append(_item("compliance", "No session-replay SDK (or it waits for opt-in consent with input masking)",
+                       "TODO" if replay else "PASS", False,
+                       "Found " + "; ".join(replay[:4]) + ". Remove it, or gate it behind consent and mask inputs"))
+    if "QA FAILED" in release_qa:
+        items.append(_item("performance", "Release QA checks passed", "FAIL", True, "Fix the failing QA checks first"))
+    elif "QA PASSED" in release_qa and platform != "roblox":
+        items.append(_item("performance", "Release QA: headless import, unit tests and smoke run passed", "PASS"))
+    else:
+        items.append(_item("performance", "Release QA / playtest done", "TODO", False,
+                           "Roblox: playtest in Studio. iOS/Web: run QA with Godot installed"))
+    for area, check in PLATFORM_CHECKLISTS.get(platform, []) + LAUNCH_LAW:
+        items.append(_item(area, check, "TODO", False, "Confirm it, then tick it off", "checklist"))
+    return items
+
+
 def deterministic_checks(repo: Path, slug: str, s: dict, release_qa: str = "", released_code: int = 0,
-                         fetch: Fetcher | None = None) -> list[dict]:
+                         fetch: Fetcher | None = None, platform: str = "android") -> list[dict]:
     repo = Path(repo)
+    if platform and platform != "android":
+        return platform_checks(repo, slug, s, release_qa, platform)
     items: list[dict] = []
     pre = read_preset(repo)
     prefix = (s.get("package_prefix") or "com.ottranstudios").strip(".")

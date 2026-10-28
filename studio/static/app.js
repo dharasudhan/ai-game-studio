@@ -176,10 +176,11 @@ async function vBoard() {
   const ms = Object.fromEntries(S.milestones.map(m => [m.id, m]));
   $('view').innerHTML = `<div class="grid g2">
    <div class=card><h2>Start a new game</h2><input id=ngTitle placeholder="Working title (optional)">
+     <select id=ngPlatform style="margin-top:8px"><option value=android>Android (Google Play)</option><option value=ios>iOS (App Store, needs Apple Developer $99/yr)</option><option value=roblox>Roblox (Luau + Rojo)</option><option value=web>Web (browser / portals)</option></select>
      <textarea id=ngGoal placeholder="Goal, e.g. 'A cozy one-thumb puzzle game for Android, 3-minute sessions, ad-free premium'" style="margin-top:8px"></textarea>
      <div class=row style="margin-top:8px"><button class=primary onclick="newGame()">Designer pitches a concept (Gate 1)</button></div></div>
    <div class=card><h2>Games</h2>${S.games.map(g => `<div class=row style="padding:8px 0;border-bottom:1px solid var(--line)">
-      <div class=grow><b>${esc(g.title)}</b> <span class=pill>${esc(human(g.status))}</span>${g.version ? ` <span class="pill acc">v${esc(g.version)}</span>` : ''}
+      <div class=grow><b>${esc(g.title)}</b> <span class=pill>${esc(human(g.status))}</span>${g.version ? ` <span class="pill acc">v${esc(g.version)}</span>` : ''} <span class=pill>${esc(g.platform || 'android')}</span>
       <div class=faint>${g.repo_path ? 'games/' + esc(g.slug) + (g.package ? ' · ' + esc(g.package) : '') : 'no repo yet (after Gate 1)'}</div></div>
       <button class=sm onclick="gameMenu(${g.id})">Actions</button></div>`).join('') || '<div class=empty>No games yet.</div>'}</div></div>
    <div class=card style="margin-top:14px"><h2>Board <span class=grow></span><select id=boardSel onchange="boardGame=this.value;sig.board=null;refresh(true)">${gameOpts(boardGame, true)}</select></h2>
@@ -188,7 +189,7 @@ async function vBoard() {
        <div style="margin-top:5px"><b>T#${t.id}</b> ${esc(t.title)}</div><div class=faint>${esc(human(t.status))} · ${esc((ms[t.milestone_id] || {}).title || (t.kind === 'bug' ? 'from player reports' : ''))}${S.games.length > 1 && !boardGame ? ' · ' + esc(gname(t.game_id)) : ''}</div></div>`).join('')}</div>`; }).join('')}</div></div>`;
 }
 async function newGame() { const goal = $('ngGoal').value.trim(); if (!goal) return toast('Describe the game goal', true);
-  await post('/api/games', {goal, title: $('ngTitle').value}); toast('Designer is on it'); sig.board = null; refresh(true); }
+  await post('/api/games', {goal, title: $('ngTitle').value, platform: $('ngPlatform').value}); toast('Designer is on it'); sig.board = null; refresh(true); }
 function gameMenu(id) {
   const g = ST.games.find(x => x.id === id) || {};
   modal(`<h3>${esc(g.title)}</h3><div class=sp></div>

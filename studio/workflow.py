@@ -27,9 +27,10 @@ from .godot import android_export, find_godot, run_qa
 from .management import ManagementMixin
 from .wizard import SetupMixin
 from .notify import notify
-from .prompts import ROLES, ParseError, build_prompt, extract_json
+from .prompts import PLATFORMS, ROLES, ParseError, build_prompt, extract_json
 
 TEMPLATE = Path(__file__).parent / "templates" / "godot"
+TEMPLATES = {"roblox": Path(__file__).parent / "templates" / "roblox"}
 GATES = {1: "New game concept", 2: "Milestone plan", 3: "Code/build change -> main", 4: "Money spend",
          5: "Store release", 6: "Anything public"}
 WORK_AGENTS = {"engineer", "artist", "designer", "qa", "marketing", "analyst"}
@@ -38,7 +39,7 @@ WORK_AGENTS = {"engineer", "artist", "designer", "qa", "marketing", "analyst"}
 def fill_template(repo: Path, subs: dict[str, str]) -> None:
     """Replace {{PLACEHOLDERS}} in the template's text files (never inside addons/, which holds binaries)."""
     for f in Path(repo).rglob("*"):
-        if f.is_file() and f.suffix in {".godot", ".gd", ".cfg", ".md", ".json"} and "addons" not in f.relative_to(repo).parts:
+        if f.is_file() and f.suffix in {".godot", ".gd", ".cfg", ".md", ".json", ".luau"} and "addons" not in f.relative_to(repo).parts:
             txt = f.read_text()
             for k, v in subs.items():
                 txt = txt.replace(k, v)
@@ -181,7 +182,11 @@ class Studio(SupportMixin, ManagementMixin, SetupMixin):
         st = self.db.settings()
         ident = (f"Studio: {st.get('studio_name', '')} | package ids {st.get('package_prefix', '')}.<slug> | "
                  f"contact {st.get('contact_email', '')} | website {st.get('studio_website', '')}\n")
-        prompt = build_prompt(self.paths.prompts, role, task, ident + context, self.feedback_for(job.get("game_id"), role))
+        g = self.db.one("SELECT platform FROM games WHERE id=?", job.get("game_id")) if job.get("game_id") else None
+        platform = (g or {}).get("platform") or "android"
+        ident += f"Platform: {platform}\n"
+        prompt = build_prompt(self.paths.prompts, role, task, ident + context, self.feedback_for(job.get("game_id"), role),
+                              platform)
         if not isinstance(engine, FakeEngine):
             self._throttle()
         rid = self.db.insert("runs", job_id=job["id"], game_id=job.get("game_id"), agent=role, task=task,
@@ -245,12 +250,15 @@ class Studio(SupportMixin, ManagementMixin, SetupMixin):
                                                                    "ticket_id": ticket_id}, agent)
 
     # ------------------------------------------------------------------ games
-    def new_game(self, goal: str, title: str = "") -> int:
+    def new_game(self, goal: str, title: str = "", platform: str = "android") -> int:
         goal = (goal or "").strip()
+        platform = (platform or "android").strip().lower()
         if not goal:
             raise ValueError("goal is required")
+        if platform not in PLATFORMS:
+            raise ValueError(f"platform must be one of {', '.join(PLATFORMS)}")
         gid = self.db.insert("games", slug=f"draft-{uuid.uuid4().hex[:12]}", title=title.strip() or "Untitled concept",
-                             goal=goal, status="concept", repo_path="", created_at=now(), updated_at=now())
+                             goal=goal, status="concept", platform=platform, repo_path="", created_at=now(), updated_at=now())
         self.log("New game requested: " + goal[:200], gid)
         self.enqueue(gid, "designer", "designer.pitch", {"title_hint": title})
         return gid
@@ -280,7 +288,7 @@ class Studio(SupportMixin, ManagementMixin, SetupMixin):
         while self.db.one("SELECT id FROM games WHERE slug=? AND id<>?", slug, g["id"]) or (self.paths.games / slug).exists():
             slug, n = f"{base}-{n}", n + 1
         repo = self.paths.games / slug
-        shutil.copytree(TEMPLATE, repo)
+        shutil.copytree(TEMPLATES.get(g.get("platform") or "android", TEMPLATE), repo)
         st = self.db.settings()
         slug_id = slug.replace("-", "_")
         prefix = (st.get("package_prefix") or "com.ottranstudios").strip(".")
@@ -612,9 +620,13 @@ class Studio(SupportMixin, ManagementMixin, SetupMixin):
         repo = Path(g["repo_path"])
         godot = find_godot(self.db.get("godot_bin"))
         files = gitops.git(repo, "ls-files").split()
-        rep = run_qa(repo, files, godot)
+        platform = g.get("platform") or "android"
+        rep = run_qa(repo, files, None if platform == "roblox" else godot)
         build = "Android export disabled in Settings"
-        if self.db.get("qa_android_export_on_release", "1") == "1":
+        if platform != "android":
+            build = (f"SKIPPED: {platform} builds are made on your Mac by you (Xcode / Roblox Studio / web export), "
+                     "see the platform track")
+        elif self.db.get("qa_android_export_on_release", "1") == "1":
             ok, detail = android_export(repo, godot, repo / "build" / "android")
             build = ("SKIPPED: " if ok is None else ("OK: " if ok else "FAILED: ")) + detail
         self.add_doc(g["id"], "release_qa", "Release QA + build", rep.markdown() + "\n\n**Android build:** " + build, "qa")
@@ -642,10 +654,12 @@ class Studio(SupportMixin, ManagementMixin, SetupMixin):
             code = int(pre.get("version/code") or 0)
         except ValueError:
             code = 0
+        platform = g.get("platform") or "android"
         items = audit_mod.deterministic_checks(repo, g["slug"], s, p.get("qa", ""), int(g.get("released_version_code") or 0),
-                                               getattr(self, "audit_fetch", None))
+                                               getattr(self, "audit_fetch", None), platform)
         auto = "\n".join(f"- {i['verdict']} [{i['area']}] {i['check']}" for i in items if i["source"] == "auto")
-        ctx = (f"Game: {g['title']} v{version} (versionCode {code}), package {pre.get('package/unique_name', '?')}\n"
+        ctx = (f"Game: {g['title']} v{version} (versionCode {code}), package {pre.get('package/unique_name', '?')}, "
+               f"platform {platform}\n"
                f"Studio: {s.get('studio_name')}, contact {s.get('contact_email')}, website {s.get('studio_website')}\n"
                f"Play account: {s.get('play_account_type')} (personal = 12 testers x 14 days closed test before production)\n\n"
                f"Automated checks already done:\n{auto}\n\nRelease QA:\n{p.get('qa', '')[:4000]}\n\nBuild: {p.get('build', '')[:800]}\n"

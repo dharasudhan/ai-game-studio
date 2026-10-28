@@ -22,6 +22,7 @@ EDITABLE = set(SETTINGS_SCHEMA)
 class NewGame(BaseModel):
     goal: str
     title: str = ""
+    platform: str = "android"
 
 
 class Decision(BaseModel):
@@ -379,7 +380,7 @@ def create_app(studio: Studio | None = None, start_worker: bool = True) -> FastA
 
     @app.post("/api/games")
     def new_game(body: NewGame):
-        return {"game_id": guard(st.new_game, body.goal, body.title)}
+        return {"game_id": guard(st.new_game, body.goal, body.title, body.platform)}
 
     @app.post("/api/approvals/{aid}/approve")
     def approve(aid: int):

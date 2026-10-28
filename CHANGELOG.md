@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.4.0 - 2026-10-28 - platform tracks
+### Added
+- Each game has a platform: Android (default), iOS, Roblox or Web, chosen in "Start a new game".
+- `prompts/platforms/<platform>.md` is added to every agent's prompt for that game (build, store, money and
+  safety rules per platform). Edit it like any other prompt file.
+- Roblox games get a Rojo/Luau repo (`studio/templates/roblox`) instead of the Godot template. Godot QA is
+  skipped and the owner playtests in Roblox Studio.
+- The launch audit uses each platform's own rules. iOS covers Apple IAP, ATT, privacy manifest and the $99
+  Apple Developer fee (Gate 4). Roblox covers Robux-only money, TextService filtering and the maturity
+  questionnaire. Web covers load size, consent banner and portal SDKs. The six launch-law checks apply to all.
+- Release builds for iOS, Roblox and Web are made by the owner on the Mac (Xcode, Studio, web export).
+  Hark/the studio never uploads. Tests: 79 (5 new).
+
 ## 1.3.1 - 2026-10-28 - launch-law checks
 ### Added
 - Six launch-law rows in the audit checklist: COPPA age gate, bundled fonts (no Google Fonts/CDN), session replay

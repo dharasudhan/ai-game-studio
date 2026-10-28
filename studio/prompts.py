@@ -52,7 +52,8 @@ production upload. The automated checks above are done; add what needs judgment:
 FPS, memory, AAB size, battery/thermal), device compatibility (screen sizes/aspect ratios, orientation,
 renderer, 16 KB page alignment), Google Play policy (permissions + declarations incl. Advertising ID, target
 audience 13+, ads policy, Billing, Data safety, IARC, listing metadata, DSA trader, the personal-account
-closed-test rule of 12 testers x 14 days) and compliance (GDPR/UMP consent, COPPA/Families, asset licences
+closed-test rule of 12 testers x 14 days; for a game whose Platform is not android, check that
+platform's store rules from its platform track instead) and compliance (GDPR/UMP consent, COPPA/Families, asset licences
 and credits, IAP terms). Read the repository; do not edit anything. Mark verdict PASS / FAIL / TODO (cannot be
 verified from the repo); set blocker=true only for a FAIL that must be fixed before upload. Not legal advice.
 Reply JSON: {"summary": str, "items": [{"area": "performance"|"device"|"policy"|"compliance", "check": str,
@@ -126,19 +127,36 @@ RUN_NOW = {
 }
 
 
-def load_role(prompts_dir: Path, role: str) -> str:
+PLATFORMS = ("android", "ios", "roblox", "web")
+PLATFORM_DEFAULTS = Path(__file__).parent / "prompt_defaults" / "platforms"
+
+
+def platform_track(prompts_dir: Path, platform: str) -> str:
+    """The game's platform track (prompts/platforms/<p>.md, falling back to the shipped default)."""
+    if platform not in PLATFORMS:
+        return ""
+    for p in (Path(prompts_dir) / "platforms" / f"{platform}.md", PLATFORM_DEFAULTS / f"{platform}.md"):
+        if p.exists():
+            return p.read_text()
+    return ""
+
+
+def load_role(prompts_dir: Path, role: str, platform: str = "") -> str:
     parts = []
     for name in ("_common.md", f"{role}.md"):
         p = prompts_dir / name
         if p.exists():
             parts.append(p.read_text())
+    track = platform_track(prompts_dir, platform)
+    if track:
+        parts.append(track + "\nThis platform track overrides the Android/Godot defaults above where they differ.")
     return "\n\n".join(parts)
 
 
-def build_prompt(prompts_dir: Path, role: str, task: str, context: str, feedback: list[str]) -> str:
+def build_prompt(prompts_dir: Path, role: str, task: str, context: str, feedback: list[str], platform: str = "") -> str:
     fb = "\n".join(f"- {n}" for n in feedback) or "- (none yet)"
     return (
-        f"{load_role(prompts_dir, role)}\n\n"
+        f"{load_role(prompts_dir, role, platform)}\n\n"
         f"# Owner feedback to respect (most recent first)\n{fb}\n\n"
         f"# Context\n{context.strip()}\n\n"
         f"# TASK: {task}\n{CONTRACTS[task]}\n\n"

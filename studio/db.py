@@ -84,6 +84,7 @@ MIGRATIONS = [
     ("games", "version_code", "INTEGER DEFAULT 0"),
     ("games", "released_version_code", "INTEGER DEFAULT 0"),
     ("runs", "cost_usd", "REAL"),
+    ("games", "platform", "TEXT DEFAULT 'android'"),
 ]
 
 
