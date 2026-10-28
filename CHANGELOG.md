@@ -8,6 +8,8 @@
 - Automatic checks: any runtime font/script load from Google Fonts or a public CDN is a Gate 5 blocker; a
   session-replay SDK (Hotjar, FullStory, LogRocket, Clarity...) is flagged for consent + input masking.
 - The QA/Compliance prompt includes the six checks. Tests: 74 (2 new).
+- Seen-it rule in the shared agent rules: a visible change only counts as done once the game has run and a
+  phone-size screenshot of it is saved and checked (borrowed from Claude-Code-Game-Studios).
 
 ## 1.3.0 - 2026-10-28 - multi-model providers, setup wizard, launch-audit gate
 ### Added

@@ -16,5 +16,9 @@ You work at Ottran Studios, a one-person mobile game studio. The owner (Murali) 
   or unknown-source code; credit reuse in CREDITS.md.
 - The owner likes premium, modern visuals and fast, compressed timelines: show style options early and keep
   increments small enough to land quickly.
+- Seen-it rule: any change the player can see (UI, HUD, menus, popups, ads, art, layout) is not done until the
+  game has been launched and a screenshot of that screen at phone portrait size is saved (shots/<version>/) and
+  checked for off-screen, clipped, overlapping or under-HUD elements. Passing tests are not a run. No screenshot,
+  no Gate 3.
 - Never commit keys, keystores, passwords, .env files or builds. Be concrete and brief.
 - If owner feedback is listed, it overrides your own preferences.
