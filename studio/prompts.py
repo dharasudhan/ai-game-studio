@@ -12,7 +12,7 @@ from pathlib import Path
 ROLES = ["producer", "designer", "engineer", "artist", "qa", "marketing", "analyst", "support", "bugfixer"]
 
 CONTRACTS: dict[str, str] = {
-    "designer.pitch": """Write ONE original game concept pitch for the owner's goal (mobile-first, Godot 4.3, small scope a solo
+    "designer.pitch": """Write ONE original game concept pitch for the owner's goal (mobile-first, Godot 4.7, small scope a solo
 studio can ship in weeks). Cover: hook, core loop, target player, art direction, session length, monetization
 (fair, no dark patterns), scope risks, and why it can stand out.
 Reply JSON: {"title": str, "logline": str, "pitch_markdown": str}""",
@@ -22,9 +22,12 @@ engineer (GDScript code + tests), artist (placeholder/procedural art, UI, icons,
 designer (GDD, levels, economy docs in docs/), qa (extra tests), marketing (drafts in marketing/),
 analyst (only if data exists). First milestone = smallest playable core loop.
 Reply JSON: {"milestones": [{"title": str, "goal": str, "tickets": [{"agent": str, "title": str, "description": str}]}]}""",
-    "ticket.work": """Do this ticket inside the current directory (a Godot 4.3 project on its own git branch).
+    "ticket.work": """Do this ticket inside the current directory (a Godot 4.7 project on its own git branch).
 Edit/create files directly if your tools allow it; otherwise return them in "files" (full file contents,
 paths relative to the project root). Do NOT run git. Add or update tests in tests/test_*.gd for code.
+For an unfamiliar feature, first look at how actively maintained, clearly licensed open-source projects solve it
+and say in "summary" which design you followed (credit reused ideas/code in CREDITS.md; never copy
+licence-incompatible or unknown-source code).
 If the work would need money (assets, tools, ads) or anything public, do not do it; list it in
 "spend_requests" / "public_actions" instead.
 Reply JSON: {"summary": str, "files": [{"path": str, "content": str}],
@@ -38,10 +41,22 @@ blocked/waiting on owner approvals (most important first), and the next 3 action
 Reply JSON: {"standup_markdown": str}""",
     "marketing.release_kit": """Prepare the release kit as DRAFTS (nothing is posted or uploaded by you): Play Store listing
 (title <=30 chars, short description <=80 chars, full description, tags/category, content rating notes,
-privacy notes), a screenshots plan (5-8 shots with captions), a 30s trailer script with shot list, and
-2-4 social post drafts. Each social post goes into "public_actions" so the owner can approve it.
+privacy notes, the studio contact email and website from the context), a screenshots plan (5-8 shots with
+captions; screenshots are exported as JPEG because the Play asset picker rejected PNG; feature graphic
+1024x500), a 30s trailer script with shot list, and 2-4 social post drafts. Each social post goes into
+"public_actions" so the owner can approve it (Gate 6).
 Reply JSON: {"store_listing_markdown": str, "screenshots_plan_markdown": str, "trailer_script_markdown": str,
  "public_actions": [{"channel": str, "content": str}]}""",
+    "qa.launch_audit": """You are QA + Compliance running the launch-readiness audit that must pass before EVERY closed-test or
+production upload. The automated checks above are done; add what needs judgment: performance (startup time,
+FPS, memory, AAB size, battery/thermal), device compatibility (screen sizes/aspect ratios, orientation,
+renderer, 16 KB page alignment), Google Play policy (permissions + declarations incl. Advertising ID, target
+audience 13+, ads policy, Billing, Data safety, IARC, listing metadata, DSA trader, the personal-account
+closed-test rule of 12 testers x 14 days) and compliance (GDPR/UMP consent, COPPA/Families, asset licences
+and credits, IAP terms). Read the repository; do not edit anything. Mark verdict PASS / FAIL / TODO (cannot be
+verified from the repo); set blocker=true only for a FAIL that must be fixed before upload. Not legal advice.
+Reply JSON: {"summary": str, "items": [{"area": "performance"|"device"|"policy"|"compliance", "check": str,
+ "verdict": "PASS"|"FAIL"|"TODO", "blocker": bool, "fix": str}]}""",
     "marketing.public_redraft": """The owner rejected this public post draft. Redraft it using the feedback.
 Reply JSON: {"public_actions": [{"channel": str, "content": str}]}""",
     "analyst.analyze": """Analyse the exported data the owner dropped in (reviews, crashes, revenue, analytics). Give the
@@ -69,7 +84,7 @@ list to guess where the bug lives. Write numbered repro steps a tester can follo
 a headless GDScript test in tests/test_*.gd could reproduce it (or say why it cannot).
 Reply JSON: {"title": str, "severity": "low"|"med"|"high"|"critical", "repro_steps": str, "expected": str,
  "actual": str, "suspected_area": str, "test_plan": str}""",
-    "bugfix.fix": """Fix this bug inside the current directory (a Godot 4.3 project on its own git branch).
+    "bugfix.fix": """Fix this bug inside the current directory (a Godot 4.7 project on its own git branch).
 Work test-first: FIRST add a regression test tests/test_bug_<ticket id>_*.gd that fails on the current code
 and passes after your fix (extends RefCounted; test_* methods return true on pass). Then make the smallest
 fix that makes it pass without breaking other tests. Do NOT run git. Edit files directly if your tools allow
@@ -82,9 +97,19 @@ Reply JSON: {"summary": str, "root_cause": str, "regression_test": str, "no_test
 TASK_ROLE = {
     "designer.pitch": "designer", "producer.plan": "producer", "qa.review": "qa",
     "producer.standup": "producer", "marketing.release_kit": "marketing",
+    "qa.launch_audit": """You are QA + Compliance running the launch-readiness audit that must pass before EVERY closed-test or
+production upload. The automated checks above are done; add what needs judgment: performance (startup time,
+FPS, memory, AAB size, battery/thermal), device compatibility (screen sizes/aspect ratios, orientation,
+renderer, 16 KB page alignment), Google Play policy (permissions + declarations incl. Advertising ID, target
+audience 13+, ads policy, Billing, Data safety, IARC, listing metadata, DSA trader, the personal-account
+closed-test rule of 12 testers x 14 days) and compliance (GDPR/UMP consent, COPPA/Families, asset licences
+and credits, IAP terms). Read the repository; do not edit anything. Mark verdict PASS / FAIL / TODO (cannot be
+verified from the repo); set blocker=true only for a FAIL that must be fixed before upload. Not legal advice.
+Reply JSON: {"summary": str, "items": [{"area": "performance"|"device"|"policy"|"compliance", "check": str,
+ "verdict": "PASS"|"FAIL"|"TODO", "blocker": bool, "fix": str}]}""",
     "marketing.public_redraft": "marketing", "analyst.analyze": "analyst",
     "support.triage": "support", "support.redraft_reply": "support", "support.fixed_replies": "support",
-    "bugfix.intake": "bugfixer", "bugfix.fix": "bugfixer",
+    "bugfix.intake": "bugfixer", "bugfix.fix": "bugfixer", "qa.launch_audit": "qa",
 }
 
 # what "Run now" does per agent (shown in the Agents page)
@@ -93,7 +118,7 @@ RUN_NOW = {
     "designer": "Pitch a new concept (game must be at concept stage)",
     "engineer": "Start the next open engineer ticket",
     "artist": "Start the next open artist ticket",
-    "qa": "Headless QA health check on main (no release kit)",
+    "qa": "Headless QA health check on main (use Games > Actions for the launch audit)",
     "marketing": "Prepare the store release kit (Gate 5)",
     "analyst": "Re-analyse the files in the game's inbox",
     "support": "Scan feedback sources and triage new items",

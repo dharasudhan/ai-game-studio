@@ -1,16 +1,22 @@
 # AI Game Studio (local)
 
-A one-person game company that runs on your MacBook. Nine AI agents do the work; you are the only
-approver. Nothing passes a gate until you click **Approve** in the dashboard at http://localhost:8787
+A one-person game company (Ottran Studios) that runs on your MacBook. Nine AI agents do the work; you are the only
+approver. Each agent can use a different model: Antigravity CLI with your Google AI Pro login (default), Claude
+Code, Codex, the Gemini / Anthropic / OpenAI / OpenRouter APIs, or local models with Ollama or LM Studio.
+
+**New here?** Run `./setup.sh`, then `./run.sh`, and open http://localhost:8787 : a **setup wizard** checks your
+toolchain, lets you pick a model per agent, saves API keys to the macOS Keychain, tests each connection and sets
+your studio identity. The full provider guide is `docs/SETUP_MODELS.md` (PDF:
+`dist/AI-Game-Studio-Model-Setup-Guide.pdf` in the Hark project). What changed: `CHANGELOG.md`. Nothing passes a gate until you click **Approve** in the dashboard at http://localhost:8787
 (it works on your phone's browser too if you open it on the Mac; it is bound to 127.0.0.1 only).
 
 | Agent | Does |
 |---|---|
 | Producer | Turns your goal into milestones and tickets, routes work, writes the daily standup |
 | Game Designer | Concept pitches, GDD, levels, economy and monetization docs |
-| Engineer | Godot 4.3 GDScript in the game repo, on its own branch, with tests |
+| Engineer | Godot 4.7 GDScript in the game repo, on its own branch, with tests; researches proven open-source designs first |
 | Artist | SVG/procedural placeholder art, UI, icons, prompt sheets for final art |
-| QA | Headless Godot import + unit tests + smoke run, Android Gradle export at release, bug reports |
+| QA (+ Compliance) | Headless Godot import + unit tests + smoke run, Android Gradle export at release, bug reports, the launch-readiness audit before every upload |
 | Marketing | Store listing, screenshot plan, trailer script, social posts (drafts only) |
 | Analyst | Reads the review/crash/revenue exports you drop in and proposes next steps |
 | Customer Support | Ingests player feedback (Play reviews CSV, inbox folder, IMAP, in-game JSON), de-duplicates, classifies, groups, drafts replies (Gate 6, drafts only) |
@@ -24,7 +30,7 @@ approver. Nothing passes a gate until you click **Approve** in the dashboard at 
 | 2 | Milestone plan (also Analyst follow-ups) | Creates tickets, starts milestone 1 | Producer re-plans using your note |
 | 3 | Each code/asset change, with diff + QA report | Merges exactly the reviewed commit into `main` | Ticket goes back to its agent with your note |
 | 4 | Any money spend | Records it as approved in the ledger (you buy it yourself) | Ledger entry rejected |
-| 5 | Store release | Marks the game released (you upload in Play Console) | Marketing redoes the release kit |
+| 5 | Store release (needs a launch audit with no blockers) | Marks the game released (you upload in Play Console) | Marketing redoes the release kit |
 | 6 | Anything public (social posts, review replies, emails to players) | Saves the approved text (you post or send it) | Marketing / Support redrafts using your note |
 
 Every rejection note is also stored as feedback for that agent and included in its later prompts for that game.
@@ -48,14 +54,17 @@ are editing.
 | **Feedback** | Customer Support inbox: KPIs, filters (game, status, category, severity, source, bug link, search), per-item status, reply draft editor, Send to Gate 6, Copy + Mark posted after approval, Send to Bug Fixer, link to a game, ignore/close; top issue groups with their bug ticket |
 | **Agents** | Per agent: enable/disable, pause/resume, engine + model + effort, Run now on a game (jumps the queue), edit its prompt file in the browser with Save and Reset to default (also `_common.md`), view and forget its rejection-feedback memory. Pause all / Resume all |
 | **Docs & ledger** | Agent documents, spend ledger (Mark spent), jobs (Retry now), activity log |
-| **Settings** | Grouped: engines, model defaults, Godot & Android paths, schedule (standup time, work hours, quiet hours), queue & limits (concurrency, backoff, daily run/token caps), budget caps, feedback sources, notifications. Values are validated. Secrets are only shown as *set / not set* |
+| **Setup** | The guided setup wizard (first run, and from Settings): prerequisites, models per agent with presets, keys (Keychain/.env, masked), connection tests, studio identity, GitHub + Play notes, summary |
+| **Settings** | Grouped: engines, model defaults, studio identity, Godot & Android paths, schedule (standup time, work hours, quiet hours), queue & limits (concurrency, backoff, daily run/token caps), budget caps, feedback sources, notifications. Values are validated. Secrets are only shown as *set / not set* |
 
 Try it with fake data, without touching your real studio: `./run.sh demo` (http://127.0.0.1:8788, throw-away
 data in a temp folder; add `--live` to let the fake agents keep working).
 
+Games > Actions also has **Run launch audit** with the latest verdict and its PDF.
+
 Engine precedence per run: `role_engines[task]` > the agent's engine on the Agents page > chore engine for chore
-tasks > `role_engines[role]` > the global engine. An agent's model overrides that engine's model setting; effort
-only applies to `agy`.
+tasks > `role_engines[role]` > the global engine. An agent's model overrides that provider's model setting; effort
+applies to `agy` and the OpenAI API.
 
 Scheduling: `concurrency` 1-4 parallel runs, but never two runs on the same game (so two agents never touch
 one repo at once). Outside `work_hours`, or once `daily_run_cap` / `daily_token_cap` is reached, no new run starts
@@ -114,32 +123,40 @@ tickets from players.
 
 ---
 
-## Important: Gemini CLI vs Antigravity CLI (read this first)
+## Models per agent (multi-provider)
 
 Google stopped serving **Google AI Pro / Ultra** requests through Gemini CLI's "Sign in with Google" on
-**18 June 2026** and moved those plans to **Antigravity CLI (`agy`)**.
-Sources: https://developers.google.com/gemini-code-assist/docs/deprecations/code-assist-individuals and
-https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli
+**18 June 2026** and moved those plans to **Antigravity CLI (`agy`)**, so `agy` is still the default. Since 1.3 every
+agent role can use a different provider and model. All providers share one interface in `studio/engines.py`
+(`run`, `test`), keys come from the environment, the macOS Keychain or `.env` (never the database or git), and each
+provider has a dated cost/usage note shown in the wizard.
 
-So the default engine here is `agy`, signed in with your AI Pro Google account, called headless:
+| id | provider | auth | edits files itself | typical use |
+|---|---|---|---|---|
+| `agy` (default) | Antigravity CLI | Google AI Pro login | yes | everything, no API bill |
+| `claude_code` | Claude Code CLI | Claude Pro/Max login (or API key) | yes | Engineer, Bug Fixer, QA |
+| `codex` | OpenAI Codex CLI | ChatGPT login (or API key) | yes | QA review, engineering |
+| `gemini_cli` | Gemini CLI (legacy) | GEMINI_API_KEY | yes | legacy |
+| `genai` | Gemini API | GEMINI_API_KEY | no (returns files) | Support, Analyst (free tier) |
+| `anthropic` | Anthropic API | ANTHROPIC_API_KEY | no | any role, per token |
+| `openai` | OpenAI API (Responses) | OPENAI_API_KEY | no | any role, per token |
+| `openrouter` | OpenRouter | OPENROUTER_API_KEY | no | one key, many models |
+| `ollama` | Ollama (local) | none | no | free, private (Qwen2.5-Coder 7B/14B on 16 GB) |
+| `lmstudio` | LM Studio (local) | none | no | free, private |
+| `fake` | mock provider | none | yes | tests and `./run.sh demo` |
 
-```
-agy -p "<prompt>" --output-format json [--model <slug>] [--effort low|medium|high] --print-timeout 900s
-```
+Presets in the wizard: **All Google AI Pro**, **Claude for engineering + Gemini for the rest**, **Local only
+(Ollama)**, **Mixed**. Step-by-step install, keys, model choice and pricing caveats per provider:
+`docs/SETUP_MODELS.md`.
 
-(flags per https://antigravity.google/docs/cli/headless). The Gemini CLI adapter
-(`gemini -p ... --output-format json --approval-mode auto_edit -m <model>`) is still included for API-key /
-Vertex / Code Assist Standard-Enterprise auth.
+## Launch-readiness audit (blocks Gate 5)
 
-Engines (pick in **Settings**; all share one adapter interface in `studio/engines.py`):
-
-| engine | auth | edits files itself | use |
-|---|---|---|---|
-| `agy` (default) | Google AI Pro login (cached in macOS keychain) | yes | everything |
-| `gemini_cli` | GEMINI_API_KEY / Vertex / enterprise | yes | legacy |
-| `genai` | `GEMINI_API_KEY` via google-genai SDK | no (returns file blocks) | fallback |
-| `ollama` | local | no | cheap chores (`chore_engine=ollama`, small models only) |
-| `fake` | none | yes | tests and offline demo |
+Standing rule since 25 Oct 2026: before **every** closed-test or production upload, QA + Compliance audit
+performance, device compatibility, Google Play policy and compliance, and write a PDF with blockers first
+(`games/<slug>/audit/launch_audit_v<version>.pdf`). In the studio this is a workflow step: the release build is
+followed by `qa.launch_audit`, then the release kit, and **Gate 5 refuses to pass** while the latest audit has
+blockers, is missing, or was made for a different versionCode. Run it again any time from Games > Actions.
+Checklists: `docs/CHECKLISTS.md`.
 
 ---
 
@@ -154,7 +171,7 @@ If `brew --version` fails:
 ### 2. Run setup
 ```
 cd local-studio
-./setup.sh --with-agy
+./setup.sh --with-agy            # add --with-claude --with-codex --with-ollama for other providers
 ```
 It checks or installs Python 3.11+, git, and node with Homebrew, installs Antigravity CLI with Google's
 installer (`curl -fsSL https://antigravity.google/cli/install.sh | bash`), builds `.venv`, installs the
@@ -177,27 +194,26 @@ Permissions: in headless mode `agy` lets the agent read and write files inside i
 ticket's worktree). Shell commands are soft-denied, which is what we want: QA runs Godot itself. Leave
 `agy_skip_permissions=0` unless you know you need it.
 
-### 4. Godot 4.3
-Download **Godot 4.3 stable (macOS, standard)** from https://godotengine.org/download/archive/4.3-stable/,
-unzip it, and move `Godot.app` to `/Applications`. The studio finds `/Applications/Godot*.app/Contents/MacOS/Godot`
-on its own. If yours is somewhere else, set `godot_bin` in Settings.
-Note: `brew install --cask godot` installs the latest 4.x, not 4.3.
-Open Godot once from Finder so macOS Gatekeeper approves it.
+### 4. Godot 4.7.x
+Download **Godot 4.7.2 stable (macOS)** from https://godotengine.org/download/macos/, move `Godot.app` to
+`/Applications` and open it once from Finder so Gatekeeper approves it. The studio finds
+`/Applications/Godot*.app/Contents/MacOS/Godot` on its own; otherwise set `godot_bin` in Settings.
+New games are generated for 4.7 with the Ottran Studios intro wired in (4.3 hit Android bugs on Snack Island).
 
 ### 5. Android export (optional, needed for Gate 5 builds)
 ```
 brew install --cask temurin@17                 # JDK 17
 brew install --cask android-commandlinetools
-sdkmanager --sdk_root="$HOME/Library/Android/sdk" "platform-tools" "build-tools;34.0.0" \
-  "platforms;android-34" "cmdline-tools;latest" "cmake;3.10.2.4988404" "ndk;23.2.8568313"
+sdkmanager --sdk_root="$HOME/Library/Android/sdk" "platform-tools" "build-tools;35.0.1" \
+  "platforms;android-35" "platforms;android-36" "cmdline-tools;latest" "cmake;3.10.2.4988404" "ndk;28.1.13356709"
 ```
-(These are the package versions Godot 4.3 asks for:
-https://docs.godotengine.org/en/4.3/tutorials/export/exporting_for_android.html)
+(Package versions from Godot 4.7's "Exporting for Android" page, checked 2026-10-28, plus API 36 because Play
+requires target SDK 36: https://docs.godotengine.org/en/stable/tutorials/export/exporting_for_android.html)
 
 Then:
 - In `.env`, set `ANDROID_HOME=$HOME/Library/Android/sdk` and `JAVA_HOME=$(/usr/libexec/java_home -v 17)` (paste the real path).
 - In Godot: **Editor > Editor Settings > Export > Android**, set *Java SDK Path* and *Android SDK Path*.
-- In Godot: **Editor > Manage Export Templates > Download and Install** (4.3).
+- In Godot: **Editor > Manage Export Templates > Download and Install** (4.7.2).
 - Every generated game has an `Android` preset with Gradle build on (`export_presets.cfg`). At release, QA
   runs `godot --headless --install-android-build-template --export-debug Android build/android/game-debug.apk`.
   Release signing is yours: set `GODOT_ANDROID_KEYSTORE_RELEASE_PATH/USER/PASSWORD` yourself. No keystore
@@ -208,17 +224,16 @@ Then:
 ```
 ./run.sh            # dashboard + worker on http://localhost:8787 (bound to 127.0.0.1 only)
 ./run.sh --awake    # same, wrapped in `caffeinate -ims` so the Mac does not idle-sleep while agents work
-./run.sh doctor     # toolchain check
+./run.sh doctor     # toolchain + provider check
+./run.sh scan games/<slug>   # secret scan before you push a repo
 ./run.sh demo       # offline demo with fake data on http://127.0.0.1:8788 (your real data is not touched)
 ```
 Click **Start a new game**, describe the goal, and watch the Approval Desk.
 
-### 7. Optional: Ollama for chores
-```
-brew install ollama && ollama serve &   # or the Ollama app
-ollama pull llama3.2:3b                 # small models only on 16 GB (3B-8B)
-```
-Settings: `chore_engine=ollama`, `chore_tasks=producer.standup`.
+### 7. Optional: other models (Claude, Codex, APIs, Ollama, LM Studio)
+Open the setup wizard (http://localhost:8787/#setup) and follow `docs/SETUP_MODELS.md`. For local models on
+16 GB: `ollama pull qwen2.5-coder:7b` (14B fits with little else open). Cheap chores only:
+Settings `chore_engine=ollama`, `chore_tasks=producer.standup`.
 
 ### 8. Optional: auto-start at login (launchd)
 ```
@@ -262,20 +277,26 @@ Logs go to `data/logs/`.
 - Role prompts: `prompts/*.md` (`_common.md` applies to everyone). They are re-read on every run, and editable on
   the Agents page. The shipped defaults (used by **Reset to default**) are in `studio/prompt_defaults/`.
 - Output contracts (the JSON each task must return) are in `studio/prompts.py`.
-- Per-role engine: Settings > `role_engines`, e.g. `{"marketing":"genai","qa.review":"agy"}`.
-- `GEMINI.md` / `AGENTS.md` in each game repo hold the project rules that agy and Gemini CLI load automatically.
+- Per-role provider and model: the setup wizard or the Agents page. Advanced per-task overrides: Settings >
+  `role_engines`, e.g. `{"marketing":"genai","qa.review":"agy"}`.
+- `GEMINI.md` / `AGENTS.md` in each game repo hold the project rules that agy, Gemini CLI, Claude Code and Codex load.
 
 ## Tests
 ```
 . .venv/bin/activate && pytest                     # fake engine, full loop
-GODOT_BIN=/Applications/Godot.app/Contents/MacOS/Godot pytest   # also runs real headless Godot checks
+GODOT_BIN=/Applications/Godot.app/Contents/MacOS/Godot pytest   # also runs real headless Godot 4.7 checks
 ```
 The tests cover new game > pitch > reject with note > re-pitch > Gate 1 > plan > Gate 2 > ticket > engineer
 change on a branch > QA > Gate 3 > merge > release build > Gate 5/6. They also cover the QA bounce-back loop,
 a Gate 3 rejection, a Gate 4 spend, a non-agentic engine, path traversal refusal, the analyst inbox,
 rate-limit backoff, retry then fail, pause on a missing engine, resume after a crash, the HTTP API and
 CSRF header, and the CLI adapters against stub binaries.
-New in this version: the Status / Agents / Settings / Feedback APIs (pause, disable, engine/model/effort overrides,
+New in 1.3: every provider against a fake HTTP transport or stub CLI binaries (request shape, token counts,
+429/401/connection classification), the registry, per-role provider + model selection, the Keychain/.env key
+store (masked, never in the database), the setup-wizard API (state, prerequisites with fixes, presets, roles,
+keys, connection tests, identity validation, finish summary), the launch audit (deterministic checks, PDF, Gate 5
+blocked by blockers / stale or missing audits, re-audit opens it), the secret scan and the Godot 4.7 template.
+Earlier: the Status / Agents / Settings / Feedback APIs (pause, disable, engine/model/effort overrides,
 run-now, prompt edit + reset, feedback memory, settings validation, secrets never returned), work hours, daily caps,
 one-run-per-game concurrency guard, engine backoff state, standup time, notifications and quiet hours; Support
 ingestion of a UTF-16 Play CSV, txt/json/csv inbox files, in-game JSON and IMAP (fake read-only server), dedup,
@@ -289,7 +310,10 @@ local-studio/
   setup.sh  run.sh  requirements.txt  .env.example  pytest.ini
   launchd/com.aigamestudio.local.plist
   prompts/            _common, producer, designer, engineer, artist, qa, marketing, analyst, support, bugfixer (.md)
+  docs/SETUP_MODELS.md  provider setup guide (install, keys, models per role, local models, pricing, troubleshooting)
+  docs/CHECKLISTS.md    studio checklists (brand, Godot 4.7, source control, audit, compliance, Play, social)
   docs/hark-edition/  operating docs shared with the Hark edition (OVERVIEW.md, README, compliance, intro kit)
+  CHANGELOG.md
   CREDITS.md          prior art studied (no third-party code copied)
   studio/
     app.py            FastAPI dashboard + JSON API (127.0.0.1:8787)
@@ -301,20 +325,27 @@ local-studio/
     demo.py           `./run.sh demo` offline demo data
     prompt_defaults/  shipped prompts for Reset to default
     worker.py         queue: one run at a time, backoff, pause/resume, crash recovery, daily standup
-    engines.py        adapters: agy, gemini_cli, genai, ollama, fake
+    engines.py        provider layer: agy, claude_code, codex, gemini_cli, genai, anthropic, openai, openrouter,
+                      ollama, lmstudio, fake (mock) + registry, build_engine, check_provider
+    keystore.py       API keys: env > macOS Keychain > .env, masking (never in the DB)
+    wizard.py         setup wizard backend: prerequisites, presets, roles, keys, tests, identity
+    audit.py          launch-readiness audit (deterministic checks + agent review) gating Gate 5
+    pdfgen.py         dependency-free PDF writer for audit reports
+    secretscan.py     secret scan (`python -m studio scan`)
     prompts.py        prompt assembly, output contracts, JSON extraction
     gitops.py         repo, worktrees, merge of the approved SHA
     godot.py          locate Godot, headless QA, Android export
     db.py config.py __main__.py (doctor)
     static/           index.html + app.css + app.js (dashboard, no build step)
-    templates/godot/  Godot 4.3 project skeleton with a headless test runner
+    templates/godot/  Godot 4.7 project skeleton: Ottran Studios intro kit, legal config, CREDITS, test runner
   tests/              pytest suite
   data/  games/  feedback/   created at runtime (gitignored; feedback/ holds player data)
 ```
 
 ## Known limits
-- The `agy` adapter follows Google's published headless docs and is tested against a stub. It has not been
-  run against a live AI Pro account from here. Do step 3's `agy -p ... --output-format json` check first.
+- The CLI adapters (`agy`, `claude`, `codex`) follow each vendor's published headless docs (checked 2026-10-28)
+  and are tested against stub binaries; the API adapters are tested against a fake HTTP transport. None has been
+  run against a live account from here: use the wizard's Deep test on your Mac first. Do step 3's `agy -p ... --output-format json` check first.
   `agy` changes quickly. If flags move, edit `AntigravityCLIEngine.command()`.
 - Quota and auth errors are recognised by matching message text. An unusual wording counts as an ordinary
   failure and retries with the normal backoff.
@@ -328,4 +359,7 @@ local-studio/
 - The "regression test fails on main" check needs a real Godot; without it the check is reported as skipped.
 - Single user, local only. There is no login on the dashboard. It binds to 127.0.0.1, and every POST needs
   the `X-Studio` header.
-- On a 16 GB Mac, keep Ollama models at 8B or smaller, and prefer `agy` for anything that writes code.
+- On a 16 GB Mac, keep local models at 7B (14B with little else open), and prefer a CLI agent for anything that
+  writes code.
+- The macOS Keychain backend shells out to `/usr/bin/security`; it is tested with a mocked runner, not a real
+  Keychain. Prices and model names in the provider notes are dated 2026-10-28 and will drift.

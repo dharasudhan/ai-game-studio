@@ -410,7 +410,7 @@ class SupportMixin:
         files = gitops.git(Path(game["repo_path"]), "ls-files").splitlines()
         reports = "\n".join(f"- #{i['id']} [{i['source']}, {i['rating'] or '-'} stars, v{i['app_version'] or '?'}, {i['device'] or '?'}] {i['text'][:600]}"
                             for i in items)
-        ctx = (f"Game: {game['title']} (Godot 4.3)\nIssue group: {g['title']} ({g['category']}, severity {g['severity']}, {g['count']} reports)\n"
+        ctx = (f"Game: {game['title']} (Godot 4.7)\nIssue group: {g['title']} ({g['category']}, severity {g['severity']}, {g['count']} reports)\n"
                f"Player reports:\n{reports}\n\nRepository files ({len(files)}):\n" + "\n".join(files[:300]) + "\n")
         data = self.call_agent(job, "bugfixer", "bugfix.intake", ctx, self.scratch(game["id"]))
         if not data.get("title") or not data.get("repro_steps"):

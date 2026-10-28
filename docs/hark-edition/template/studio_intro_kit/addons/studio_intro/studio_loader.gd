@@ -158,6 +158,54 @@ func handoff(path: String, hold: bool, top: Color, bottom: Color) -> void:
 		await end()
 
 
+## v0.15.4: swap the current scene for `path` through an EMPTY frame, from this autoload (the caller's scene may be
+## freed while this runs). Order: leave the signal / tween step that called us -> replace the scene by an empty
+## node (the old scene leaves the tree now and is deleted at the next flush) -> wait `frames` frames so every node,
+## tween, coroutine and GPU resource of the old scene is really gone -> threaded load (cached: instant) -> switch.
+## So the old and the new scene are never resident together, and nothing is freed under a running tween step.
+## The loading screen (if up) stays up; the new scene calls end() when it is ready.
+var _swapping := false
+var swaps := 0                     # tests
+var swap_peak := {}                # tests: memory around the last swap (static / video MB, nodes)
+
+
+func is_swapping() -> bool:
+	return _swapping
+
+
+func swap_scene(path: String, frames := 2) -> void:
+	if _swapping:
+		return
+	_swapping = true
+	swaps += 1
+	var tree := get_tree()
+	await tree.process_frame
+	swap_peak = {"before_static": _mb(Performance.MEMORY_STATIC), "before_vid": _mb(Performance.RENDER_VIDEO_MEM_USED),
+		"before_nodes": int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))}
+	prefetch(path)
+	var blank := Node.new()
+	blank.name = "SceneSwap"
+	var ps := PackedScene.new()
+	ps.pack(blank)
+	blank.free()
+	tree.change_scene_to_packed(ps)
+	for i in maxi(1, frames):
+		await tree.process_frame
+	swap_peak["blank_static"] = _mb(Performance.MEMORY_STATIC)
+	swap_peak["blank_vid"] = _mb(Performance.RENDER_VIDEO_MEM_USED)
+	swap_peak["blank_nodes"] = int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+	var res := await wait_loaded(path, 0.1, 0.3)
+	_swapping = false
+	if res is PackedScene:
+		tree.change_scene_to_packed(res)
+	else:
+		tree.change_scene_to_file(path)
+
+
+func _mb(m: int) -> float:
+	return snappedf(Performance.get_monitor(m) / 1048576.0, 0.1)
+
+
 # ------------------------------------------------------------------ cover API
 ## Show the loading screen (or keep the one that is up, swapping in new tips). Await it to be sure it has
 ## been drawn. opts: fade (s, default 0.15; 0 = instant), progress (start value), title.
@@ -168,7 +216,8 @@ func cover(scene_tips: Array = [], opts: Dictionary = {}) -> void:
 		# show, so the MSDF glyph atlas is at its full size from the start instead of growing by 4-8 MB pages
 		# (and hitching) on later loads in the middle of a match
 		_warmed = true
-		_screen.prewarm(tips + scene_tips + [title_text + ".", String(opts.get("title", ""))])
+		# v0.15.4: spread over frames (one tip per frame) - all at once was a ~1 s boot hitch on the S25
+		_screen.prewarm_spread(tips + scene_tips + [title_text + ".", String(opts.get("title", ""))])
 
 
 func _cover(scene_tips: Array, opts: Dictionary) -> void:

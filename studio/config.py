@@ -5,6 +5,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from .engines import ENGINE_IDS
+
 APP_ROOT = Path(__file__).resolve().parent.parent  # local-studio/
 
 
@@ -53,7 +55,8 @@ def default_paths() -> Paths:
 # Settings live in SQLite (table `settings`) and are seeded from these defaults.
 # Env vars STUDIO_<KEY upper> override the seed on first start.
 DEFAULT_SETTINGS: dict[str, str] = {
-    # engine: agy (Antigravity CLI, Google AI Pro login) | gemini_cli | genai | ollama | fake
+    # default provider for every role (per-role overrides live on the Agents page / setup wizard):
+    # agy | claude_code | codex | gemini_cli | genai | anthropic | openai | openrouter | ollama | lmstudio | fake
     "engine": "agy",
     "agy_bin": "agy",
     "agy_model": "",            # empty = CLI default; see `agy models`
@@ -61,9 +64,41 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "agy_skip_permissions": "0",  # 1 = --dangerously-skip-permissions for file-editing agents
     "gemini_bin": "gemini",
     "gemini_model": "",
-    "genai_model": "gemini-flash-latest",
+    "genai_model": "gemini-3.8-flash",                       # Gemini API (GEMINI_API_KEY)
+    "gemini_api_base": "https://generativelanguage.googleapis.com/v1beta",
+    "claude_bin": "claude",                                  # Claude Code CLI
+    "claude_model": "",                                      # empty = Claude Code default
+    "claude_permission_mode": "acceptEdits",
+    "claude_use_api_key": "0",                               # 0 = use your Claude login, never ANTHROPIC_API_KEY
+    "anthropic_model": "claude-sonnet-5-5",                  # Anthropic API (ANTHROPIC_API_KEY)
+    "anthropic_base": "https://api.anthropic.com",
+    "anthropic_max_tokens": "16000",
+    "codex_bin": "codex",                                    # OpenAI Codex CLI
+    "codex_model": "",
+    "codex_use_api_key": "0",
+    "openai_model": "gpt-6.1-sol",                           # OpenAI API (OPENAI_API_KEY)
+    "openai_base": "https://api.openai.com/v1",
+    "openai_effort": "",
+    "openrouter_model": "anthropic/claude-sonnet-5.5",       # OpenRouter (OPENROUTER_API_KEY)
+    "openrouter_base": "https://openrouter.ai/api/v1",
     "ollama_host": "http://127.0.0.1:11434",
-    "ollama_model": "llama3.2:3b",
+    "ollama_model": "qwen2.5-coder:7b",
+    "ollama_num_ctx": "16384",
+    "lmstudio_base": "http://127.0.0.1:1234/v1",
+    "lmstudio_model": "",                                    # empty = whichever model is loaded
+    # studio identity (setup wizard step 6) - used in prompts, new game templates, store listings and audits
+    "studio_name": "Ottran Studios",
+    "package_prefix": "com.ottranstudios",
+    "contact_email": "ottranstudios@gmail.com",
+    "studio_website": "https://ottranstudios.com",
+    "github_owner": "",
+    "play_account_type": "personal",        # personal accounts: 12 testers x 14 days closed test before production
+    "play_target_sdk": "36",
+    "setup_complete": "0",
+    "setup_step": "welcome",
+    # launch-readiness audit (blocks Gate 5)
+    "audit_required_for_release": "1",
+    "audit_fetch_privacy_policy": "1",      # fetch the hosted policy and check it names the final package id
     "chore_engine": "",         # e.g. "ollama" -> used for chore tasks below
     "chore_tasks": "producer.standup",
     "role_engines": "{}",       # JSON, e.g. {"marketing": "genai"}
@@ -116,7 +151,7 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "engine_backoff": "{}",
 }
 
-ENGINES = ["agy", "gemini_cli", "genai", "ollama", "fake"]
+ENGINES = list(ENGINE_IDS)
 
 # Settings the dashboard may edit, grouped for the Settings page. type: str|int|bool|choice|json|time|range
 SETTINGS_SCHEMA: dict[str, dict] = {
@@ -125,16 +160,44 @@ SETTINGS_SCHEMA: dict[str, dict] = {
     "chore_tasks": {"group": "Engines", "type": "str", "help": "Comma list of tasks that use the chore engine"},
     "role_engines": {"group": "Engines", "type": "json", "help": 'Advanced per-role/task overrides, e.g. {"qa.review":"agy"}'},
     "agy_bin": {"group": "Engines", "type": "str", "help": "Antigravity CLI binary"},
+    "claude_bin": {"group": "Engines", "type": "str", "help": "Claude Code CLI binary"},
+    "claude_permission_mode": {"group": "Engines", "type": "choice", "choices": ["acceptEdits", "auto", "dontAsk"], "help": "Claude Code permission mode for file-editing runs"},
+    "claude_use_api_key": {"group": "Engines", "type": "bool", "help": "Let Claude Code bill ANTHROPIC_API_KEY instead of your Claude login"},
+    "codex_bin": {"group": "Engines", "type": "str", "help": "Codex CLI binary"},
+    "codex_use_api_key": {"group": "Engines", "type": "bool", "help": "Give Codex CODEX_API_KEY instead of your ChatGPT login"},
+    "gemini_api_base": {"group": "Engines", "type": "str", "help": "Gemini API base URL"},
+    "anthropic_base": {"group": "Engines", "type": "str", "help": "Anthropic API base URL"},
+    "openai_base": {"group": "Engines", "type": "str", "help": "OpenAI API base URL"},
+    "openrouter_base": {"group": "Engines", "type": "str", "help": "OpenRouter base URL"},
+    "lmstudio_base": {"group": "Engines", "type": "str", "help": "LM Studio OpenAI-compatible URL"},
     "agy_model": {"group": "Model defaults", "type": "str", "help": "agy model slug (see `agy models`); empty = CLI default"},
     "agy_effort": {"group": "Model defaults", "type": "choice", "choices": ["", "low", "medium", "high"], "help": "agy effort"},
     "agy_skip_permissions": {"group": "Engines", "type": "bool", "help": "--dangerously-skip-permissions for file-editing runs"},
     "gemini_bin": {"group": "Engines", "type": "str", "help": "Gemini CLI binary"},
     "gemini_model": {"group": "Model defaults", "type": "str", "help": "Gemini CLI model"},
-    "genai_model": {"group": "Model defaults", "type": "str", "help": "google-genai model"},
+    "genai_model": {"group": "Model defaults", "type": "str", "help": "Gemini API model"},
+    "claude_model": {"group": "Model defaults", "type": "str", "help": "Claude Code model (empty = CLI default)"},
+    "anthropic_model": {"group": "Model defaults", "type": "str", "help": "Anthropic API model"},
+    "anthropic_max_tokens": {"group": "Model defaults", "type": "int", "help": "Anthropic max output tokens per run"},
+    "codex_model": {"group": "Model defaults", "type": "str", "help": "Codex CLI model (empty = CLI default)"},
+    "openai_model": {"group": "Model defaults", "type": "str", "help": "OpenAI API model"},
+    "openai_effort": {"group": "Model defaults", "type": "choice", "choices": ["", "none", "low", "medium", "high"], "help": "OpenAI reasoning effort"},
+    "openrouter_model": {"group": "Model defaults", "type": "str", "help": "OpenRouter model slug"},
+    "lmstudio_model": {"group": "Model defaults", "type": "str", "help": "LM Studio model (empty = loaded model)"},
     "ollama_host": {"group": "Engines", "type": "str", "help": "Ollama URL"},
-    "ollama_model": {"group": "Model defaults", "type": "str", "help": "Ollama model (keep to 3B-8B on 16 GB)"},
+    "ollama_model": {"group": "Model defaults", "type": "str", "help": "Ollama model (16 GB Mac: 7B, or 14B with little else open)"},
+    "ollama_num_ctx": {"group": "Model defaults", "type": "int", "help": "Ollama context window (default 4096 is too small)"},
+    "studio_name": {"group": "Studio identity", "type": "str", "help": "Brand on every game intro and listing"},
+    "package_prefix": {"group": "Studio identity", "type": "str", "help": "Android package prefix: <prefix>.<slug>"},
+    "contact_email": {"group": "Studio identity", "type": "str", "help": "Public support email for listings and policies"},
+    "studio_website": {"group": "Studio identity", "type": "str", "help": "Website on store listings (privacy policies live under it)"},
+    "github_owner": {"group": "Studio identity", "type": "str", "help": "GitHub account for private game repos (you push; the studio never does)"},
+    "play_account_type": {"group": "Studio identity", "type": "choice", "choices": ["personal", "organization"], "help": "Play developer account type"},
+    "play_target_sdk": {"group": "Godot & Android", "type": "int", "help": "Required Android target SDK for uploads"},
+    "audit_required_for_release": {"group": "Godot & Android", "type": "bool", "help": "Launch-readiness audit must pass before Gate 5"},
+    "audit_fetch_privacy_policy": {"group": "Godot & Android", "type": "bool", "help": "Audit fetches the hosted privacy policy and checks the package id"},
     "engine_timeout_seconds": {"group": "Engines", "type": "int", "help": "Max seconds per agent run"},
-    "godot_bin": {"group": "Godot & Android", "type": "str", "help": "Godot 4.3 binary (empty = auto-detect)"},
+    "godot_bin": {"group": "Godot & Android", "type": "str", "help": "Godot 4.7.x binary (empty = auto-detect)"},
     "android_sdk_path": {"group": "Godot & Android", "type": "str", "help": "Android SDK (empty = ANDROID_HOME)"},
     "java_home": {"group": "Godot & Android", "type": "str", "help": "JDK 17 home (empty = JAVA_HOME)"},
     "android_export_dir": {"group": "Godot & Android", "type": "str", "help": "Export folder inside the game repo"},
@@ -173,5 +236,7 @@ SETTINGS_SCHEMA: dict[str, dict] = {
 }
 
 # Secrets are read from the environment (.env) only. The dashboard shows set / not set, never values.
-SECRET_ENV = ["GEMINI_API_KEY", "STUDIO_IMAP_HOST", "STUDIO_IMAP_USER", "STUDIO_IMAP_PASSWORD",
+# API keys the setup wizard can save (Keychain or .env). Values never enter the database.
+API_KEY_ENV = ["GEMINI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY", "CODEX_API_KEY"]
+SECRET_ENV = ["GEMINI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY", "STUDIO_IMAP_HOST", "STUDIO_IMAP_USER", "STUDIO_IMAP_PASSWORD",
               "STUDIO_NOTIFY_WEBHOOK", "GODOT_ANDROID_KEYSTORE_RELEASE_PATH", "GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD"]

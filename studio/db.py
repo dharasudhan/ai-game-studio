@@ -59,6 +59,9 @@ CREATE TABLE IF NOT EXISTS feedback_items (
 CREATE TABLE IF NOT EXISTS feedback_groups (
   id INTEGER PRIMARY KEY, game_id INTEGER, category TEXT, title TEXT, tokens TEXT, severity TEXT,
   count INTEGER DEFAULT 0, bug_ticket_id INTEGER, created_at REAL, updated_at REAL);
+CREATE TABLE IF NOT EXISTS audits (
+  id INTEGER PRIMARY KEY, game_id INTEGER, version TEXT, version_code INTEGER, blockers INTEGER, todos INTEGER,
+  verdict TEXT, items_json TEXT, markdown TEXT, pdf_path TEXT, created_at REAL);
 CREATE TABLE IF NOT EXISTS ingested_files (
   path TEXT PRIMARY KEY, sha TEXT NOT NULL, items INTEGER, ingested_at REAL);
 CREATE INDEX IF NOT EXISTS ix_fb_fp ON feedback_items(fingerprint);
@@ -78,6 +81,9 @@ MIGRATIONS = [
     ("tickets", "fixed_in_version", "TEXT"),
     ("games", "version", "TEXT DEFAULT ''"),
     ("games", "package", "TEXT DEFAULT ''"),
+    ("games", "version_code", "INTEGER DEFAULT 0"),
+    ("games", "released_version_code", "INTEGER DEFAULT 0"),
+    ("runs", "cost_usd", "REAL"),
 ]
 
 

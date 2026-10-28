@@ -1,4 +1,4 @@
-"""Real Godot 4.3 headless checks on the project template (skipped when GODOT_BIN is not available)."""
+"""Real Godot 4.7 headless checks on the project template (skipped when GODOT_BIN is not available)."""
 import os
 import shutil
 from pathlib import Path
@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from studio.godot import run_qa
-from studio.workflow import TEMPLATE
+from studio.workflow import TEMPLATE, fill_template
 
 GODOT = os.environ.get("GODOT_BIN")
 pytestmark = pytest.mark.skipif(not GODOT or not Path(GODOT).exists(), reason="GODOT_BIN not set")
@@ -15,16 +15,17 @@ pytestmark = pytest.mark.skipif(not GODOT or not Path(GODOT).exists(), reason="G
 def make(tmp_path):
     p = tmp_path / "g"
     shutil.copytree(TEMPLATE, p)
-    for f in p.rglob("*"):
-        if f.is_file() and f.suffix in {".godot", ".gd", ".cfg"}:
-            f.write_text(f.read_text().replace("{{TITLE}}", "T").replace("{{SLUG_ID}}", "t"))
+    fill_template(p, {"{{TITLE}}": "T", "{{SLUG_ID}}": "t", "{{SLUG}}": "t", "{{PACKAGE}}": "com.ottranstudios.t",
+                      "{{STUDIO}}": "Ottran Studios", "{{CONTACT}}": "ottranstudios@gmail.com",
+                      "{{WEBSITE}}": "https://ottranstudios.com", "{{PRIVACY_URL}}": "https://ottranstudios.com/t/privacy-policy.html",
+                      "{{TARGET_SDK}}": "36"})
     return p
 
 
 def test_template_passes(tmp_path):
     rep = run_qa(make(tmp_path), [], GODOT)
     assert rep.passed, rep.markdown()
-    assert any("2 run, 0 failed" in c["name"] for c in rep.checks)
+    assert any("6 run, 0 failed" in c["name"] for c in rep.checks)   # smoke + Ottran template rules (intro, legal)
 
 
 def test_failing_test_fails(tmp_path):

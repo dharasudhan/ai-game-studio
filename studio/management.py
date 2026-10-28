@@ -7,7 +7,7 @@ import shutil
 import time
 from pathlib import Path
 
-from .config import ENGINES, SECRET_ENV
+from .config import API_KEY_ENV, ENGINES, SECRET_ENV
 from .db import dumps, loads, now
 from .godot import find_godot, run_qa
 from .notify import in_range, parse_range
@@ -20,7 +20,7 @@ AGENT_LABEL = {"producer": "Producer", "designer": "Game Designer", "engineer": 
 AGENT_BLURB = {
     "producer": "Milestones, tickets, routing, daily standup",
     "designer": "Concept pitches, GDD, levels, economy",
-    "engineer": "Godot 4.3 GDScript on its own branch, with tests",
+    "engineer": "Godot 4.7 GDScript on its own branch, with tests; researches proven open-source designs first",
     "artist": "Placeholder/procedural art, UI, icons, prompt sheets",
     "qa": "Headless Godot tests, smoke run, diff review, Android export",
     "marketing": "Store listing, screenshots plan, trailer, social drafts",
@@ -275,6 +275,7 @@ class ManagementMixin:
             "paused": gp, "pause_reason": s.get("pause_reason", ""),
             "hold_reason": self.hold_reason(),
             "engine": s.get("engine"), "chore_engine": s.get("chore_engine", ""),
+            "setup_complete": s.get("setup_complete") == "1", "studio_name": s.get("studio_name", ""),
             "concurrency": int(float(s.get("concurrency") or 1)),
             "queue": {r["status"]: r["n"] for r in self.db.all("SELECT status, COUNT(*) AS n FROM jobs GROUP BY status")},
             "engine_backoff": engines,
@@ -286,7 +287,7 @@ class ManagementMixin:
             "work_hours": s.get("work_hours", ""), "quiet_hours": s.get("quiet_hours", ""),
             "standup_time": s.get("standup_time", ""),
             "godot": find_godot(s.get("godot_bin", "")),
-            "secrets": {k: ("set" if os.environ.get(k) else "not set") for k in SECRET_ENV},
+            "secrets": {k: ("set" if (self.secrets.get(k) if k in API_KEY_ENV else os.environ.get(k)) else "not set") for k in SECRET_ENV},
             "agents": [self.agent_status(r, gp, t) for r in ROLES],
             "games": self.db.all("SELECT id, title, slug, status, version FROM games ORDER BY id DESC"),
         }

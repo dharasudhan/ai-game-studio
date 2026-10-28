@@ -1,0 +1,5 @@
+{
+  "title": "{{TITLE}}",
+  "tips": ["Tip: tap to skip the intro after half a second.", "Made with care by {{STUDIO}}."],
+  "colors": {}
+}

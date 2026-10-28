@@ -10,7 +10,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .config import SECRET_ENV, SETTINGS_SCHEMA
+from .config import API_KEY_ENV, ENGINES, SECRET_ENV, SETTINGS_SCHEMA
+from .wizard import check_prereqs
 from .worker import Worker, retry_job
 from .workflow import Studio
 
@@ -57,6 +58,37 @@ class GameBody(BaseModel):
 
 class VersionBody(BaseModel):
     version: str = ""
+
+
+class StepBody(BaseModel):
+    step: str
+
+
+class PresetBody(BaseModel):
+    preset: str
+
+
+class RolesBody(BaseModel):
+    roles: dict
+
+
+class KeyBody(BaseModel):
+    name: str
+    value: str
+    backend: str = "keychain"
+
+
+class TestBody(BaseModel):
+    deep: bool = False
+
+
+class IdentityBody(BaseModel):
+    studio_name: str = ""
+    package_prefix: str = ""
+    contact_email: str = ""
+    studio_website: str = ""
+    github_owner: str = ""
+    play_account_type: str = "personal"
 
 
 def validate_setting(key: str, value) -> str:
@@ -148,7 +180,7 @@ def create_app(studio: Studio | None = None, start_worker: bool = True) -> FastA
     @app.get("/api/agents")
     def agents():
         s = st.status()
-        return {"agents": s["agents"], "games": s["games"], "engines": ["", "agy", "gemini_cli", "genai", "ollama", "fake"],
+        return {"agents": s["agents"], "games": s["games"], "engines": [""] + ENGINES,
                 "efforts": ["", "low", "medium", "high"]}
 
     @app.post("/api/agents/{name}")
@@ -193,8 +225,78 @@ def create_app(studio: Studio | None = None, start_worker: bool = True) -> FastA
     def get_settings():
         cur = st.db.settings()
         return {"values": {k: cur.get(k, "") for k in SETTINGS_SCHEMA}, "schema": SETTINGS_SCHEMA,
-                "secrets": {k: ("set" if os.environ.get(k) else "not set") for k in SECRET_ENV},
+                "secrets": {k: ("set" if (st.secrets.get(k) if k in API_KEY_ENV else os.environ.get(k)) else "not set") for k in SECRET_ENV},
                 "feedback_dir": str(st.feedback_dir()), "prompts_dir": str(st.paths.prompts), "home": str(st.paths.home)}
+
+    # ---------------------------------------------------------------- setup wizard + providers
+    @app.get("/api/setup")
+    def setup_state():
+        return st.setup_state()
+
+    @app.get("/api/setup/prereqs")
+    def setup_prereqs():
+        checks = check_prereqs(st.db.settings())
+        return {"checks": checks, "ok": all(c["ok"] for c in checks if c["required"])}
+
+    @app.post("/api/setup/step")
+    def setup_step(body: StepBody):
+        guard(st.set_setup_step, body.step)
+        return {"step": body.step}
+
+    @app.post("/api/setup/preset")
+    def setup_preset(body: PresetBody):
+        return {"roles": guard(st.apply_preset, body.preset)}
+
+    @app.post("/api/setup/roles")
+    def setup_roles(body: RolesBody):
+        return {"roles": guard(st.apply_roles, body.roles)}
+
+    @app.get("/api/setup/keys")
+    def setup_keys():
+        return st.keys_status()
+
+    @app.post("/api/setup/keys")
+    def setup_save_key(body: KeyBody):
+        return guard(st.save_key, body.name, body.value, body.backend)
+
+    @app.post("/api/setup/identity")
+    def setup_identity(body: IdentityBody):
+        return guard(st.save_identity, body.model_dump())
+
+    @app.post("/api/setup/finish")
+    def setup_finish():
+        return st.finish_setup()
+
+    @app.get("/api/providers")
+    def providers():
+        return {"providers": st.providers_info()}
+
+    @app.post("/api/providers/{pid}/test")
+    def provider_test(pid: str, body: TestBody):
+        return st.test_connection(pid, body.deep)
+
+    # ---------------------------------------------------------------- launch audit
+    @app.post("/api/games/{gid}/audit")
+    def run_audit(gid: int):
+        return {"job_id": guard(st.request_audit, gid)}
+
+    @app.get("/api/games/{gid}/audit")
+    def latest_audit(gid: int):
+        guard(st.game, gid)
+        au = st.latest_audit(gid)
+        if not au:
+            return {"audit": None, "block_reason": st.release_block_reason(gid)}
+        au = dict(au)
+        import json as _j
+        au["items"] = _j.loads(au.pop("items_json") or "[]")
+        return {"audit": au, "block_reason": st.release_block_reason(gid)}
+
+    @app.get("/api/audits/{aid}/pdf")
+    def audit_pdf(aid: int):
+        au = st.db.one("SELECT pdf_path FROM audits WHERE id=?", aid)
+        if not au or not au["pdf_path"] or not Path(au["pdf_path"]).exists():
+            raise HTTPException(404, "audit PDF not found")
+        return FileResponse(au["pdf_path"], media_type="application/pdf", filename=Path(au["pdf_path"]).name)
 
     # ---------------------------------------------------------------- feedback (Customer Support)
     @app.get("/api/feedback")

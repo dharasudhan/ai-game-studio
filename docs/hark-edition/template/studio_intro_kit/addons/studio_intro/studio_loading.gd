@@ -59,6 +59,19 @@ func prewarm(lines: Array) -> void:
 					ts.font_render_glyph(frid, Vector2i(fs, 0), int(g.get("index", 0)))
 
 
+## v0.15.4: the same, one line per frame (no single long boot frame). Safe if the screen is freed meanwhile.
+var prewarm_done := false
+
+
+func prewarm_spread(lines: Array) -> void:
+	for l in lines:
+		prewarm([l])
+		if not is_inside_tree():
+			return
+		await get_tree().process_frame
+	prewarm_done = true
+
+
 func set_tips(t: Array) -> void:
 	tips = t
 	_tip_i = randi() % tips.size() if not tips.is_empty() else 0

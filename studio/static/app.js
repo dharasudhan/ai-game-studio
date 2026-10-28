@@ -15,7 +15,7 @@ const GATES = {1: 'New game concept', 2: 'Milestone plan', 3: 'Code/build change
 const TITLES = {status: ['Status', 'Live agents, queue, engine backoff and what waits for you'], approvals: ['Approval Desk', 'Gates 1-6: nothing passes without your explicit yes'],
   board: ['Games', 'Games, milestones and the ticket board'], feedback: ['Feedback inbox', 'Player reviews, emails and in-game reports, triaged by Customer Support'],
   agents: ['Agents', 'Enable, pause, run now, engines, prompts and feedback memory'], docs: ['Docs & ledger', 'Agent documents, spend ledger, jobs and activity'],
-  settings: ['Settings', 'Engines, schedule, limits, feedback sources, notifications']};
+  settings: ['Settings', 'Engines, schedule, limits, feedback sources, notifications'], setup: ['Setup', 'Guided setup: toolchain, models per agent, keys, identity']};
 
 let ST = null, tab = 'status', busy = false, fbFilter = {status: '', category: '', severity: '', source: '', bug: '', q: '', game_id: ''};
 const sig = {};
@@ -69,6 +69,7 @@ async function refresh(force) {
   try {
     ST = await (await fetch('/api/status')).json();
     renderHeader();
+    if (!ST.setup_complete && tab === 'status' && !sessionStorage.getItem('wizSeen')) { sessionStorage.setItem('wizSeen', '1'); location.hash = '#setup'; return; }
     await VIEWS[tab](force);
   } catch (e) { $('qpill').className = 'pill bad'; $('qpill').textContent = 'server offline'; }
   finally { busy = false; }
@@ -129,7 +130,8 @@ function payloadHtml(a, S) {
      ${p.kind === 'bug' ? `<div class=muted style="margin-top:6px">Root cause: ${esc(p.root_cause || '-')} · regression test: <span class=mono>${esc(p.regression_test || 'none')}</span> · fixes ${(p.feedback_items || []).length} player report(s)</div>` : ''}
      <details><summary>QA report</summary><pre>${esc(p.qa_markdown)}</pre></details><details open><summary>Diff (${(p.files || []).length} files)</summary><pre>${diffHtml(p.diff || '')}</pre></details>`;
   if (a.kind === 'spend') { const b = S.budget; return `<div><b>${esc(p.amount)} ${esc(p.currency || b.currency)}</b> at ${esc(p.vendor)}: ${esc(p.reason)}</div><div class=muted>Committed this month: ${b.committed_this_month} / budget ${b.monthly || 'not set'} ${esc(b.currency)}. Approving only records it; you make the purchase.</div>`; }
-  if (a.kind === 'release') return `<div class=muted>Approving marks it releasable; you upload in Play Console yourself.</div><details open><summary>Store listing</summary><pre>${esc(p.store_listing)}</pre></details><details><summary>Build + QA</summary><pre>${esc(p.build)}\n\n${esc(p.qa)}</pre></details>`;
+  if (a.kind === 'release') return `<div class=muted>Approving marks it releasable; you upload in Play Console yourself. The launch-readiness audit must have no blockers.</div>
+     ${p.audit_id ? `<div class=row style="margin:6px 0"><span class="pill ${p.audit_blockers ? 'bad' : 'ok'}">Launch audit v${esc(p.audit_version)} (${esc(p.audit_code)}): ${esc(p.audit_verdict)} · ${esc(p.audit_blockers)} blocker(s)</span><a href="/api/audits/${p.audit_id}/pdf" target=_blank>Open audit PDF</a></div>` : '<div class="pill bad" style="margin:6px 0">No launch audit yet: Gate 5 will refuse</div>'}<details open><summary>Store listing</summary><pre>${esc(p.store_listing)}</pre></details><details><summary>Build + QA</summary><pre>${esc(p.build)}\n\n${esc(p.qa)}</pre></details>`;
   if (a.kind === 'public') return `<div class=muted>Channel: ${esc(p.channel)} - approving does not post; you copy it.</div><pre>${esc(p.content)}</pre>`;
   if (a.kind === 'reply') return `<div class=row><span class="pill acc">${esc(p.channel)}</span>${stars(p.rating)}<span class="tag c-${esc(p.category)}">${esc(p.category || '')}</span>${p.followup ? '<span class="pill ok">fixed follow-up</span>' : ''}
        ${p.review_link ? `<a href="${esc(p.review_link)}" target=_blank rel=noopener class=faint>open review</a>` : ''}</div>
@@ -192,10 +194,15 @@ function gameMenu(id) {
   modal(`<h3>${esc(g.title)}</h3><div class=sp></div>
    <div class=field><label class=f>Current version (used for "fixed in vX" replies)</label><div class=row><input id=gVer value="${esc(g.version || '')}" placeholder="1.0.3" style="max-width:160px"><button onclick="setVersion(${id})">Save</button></div></div>
    <div class=row><button onclick="post('/api/games/${id}/standup').then(()=>{toast('Standup queued');closeModal()})">Standup now</button>
-   <button onclick="post('/api/games/${id}/fixed_replies',{version:$('gVer').value}).then(()=>{toast('Support drafts follow-ups');closeModal()})">Draft "fixed in vX" replies</button></div>
+   <button onclick="post('/api/games/${id}/fixed_replies',{version:$('gVer').value}).then(()=>{toast('Support drafts follow-ups');closeModal()})">Draft "fixed in vX" replies</button>
+   <button onclick="post('/api/games/${id}/audit').then(()=>{toast('Launch audit queued');closeModal()})">Run launch audit</button></div>
+   <div id="gAudit" class=faint style="margin-top:10px">Launch audit: loading...</div>
    <div class=sp></div><label class=f>Analyst inbox (reviews/crash/revenue exports)</label><input type=file onchange="upload(${id},this)">
    <div class=row style="margin-top:14px"><span class=grow></span><button class=ghost onclick="closeModal()">Close</button></div>`);
 }
+async function loadAudit(id) { const el = $('gAudit'); if (!el) return; const r = await api(`/api/games/${id}/audit`); const a = r.audit;
+  el.innerHTML = a ? `Launch audit v${esc(a.version)} (${a.version_code}): <span class="pill ${a.blockers ? 'bad' : 'ok'}">${esc(a.verdict)} · ${a.blockers} blocker(s)</span> <a href="/api/audits/${a.id}/pdf" target=_blank>PDF</a>${r.block_reason ? `<div class=lvl-error>Gate 5 blocked: ${esc(r.block_reason)}</div>` : ''}`
+    : `No launch audit yet. ${esc(r.block_reason)}`; }
 async function setVersion(id) { await post(`/api/games/${id}/version`, {version: $('gVer').value}); toast('Version saved'); sig.board = null; refresh(true); }
 async function upload(id, el) { const f = el.files[0]; if (!f) return; const fd = new FormData(); fd.append('file', f);
   const r = await fetch(`/api/games/${id}/inbox`, {method: 'POST', headers: {'X-Studio': '1'}, body: fd}); toast(r.ok ? 'Analyst queued' : 'Upload failed', !r.ok); closeModal(); }
@@ -360,9 +367,12 @@ async function vSettings(force) {
     if (s.type === 'int') return `<input type=number min=0 data-k="${k}" value="${esc(v)}">`;
     if (s.type === 'time') return `<input type=time data-k="${k}" value="${esc(v)}">`;
     return `<input data-k="${k}" value="${esc(v)}" placeholder="${s.type === 'range' ? 'HH:MM-HH:MM (empty = off)' : ''}">`; };
-  $('view').innerHTML = `<div class=set-grid>${Object.entries(groups).map(([g, rows]) => `<div class=card><h2>${esc(g)}</h2>
+  $('view').innerHTML = `<div class="card" style="margin-bottom:14px"><div class=row><div class=grow><h2 style="margin:0">Models, keys and identity</h2>
+      <div class=muted>Pick a provider and model per agent, save API keys to the Keychain, test connections, studio identity.</div></div>
+      <a class="btn primary" href="#setup">Open setup wizard</a></div></div>
+   <div class=set-grid>${Object.entries(groups).map(([g, rows]) => `<div class=card><h2>${esc(g)}</h2>
      ${rows.map(([k, s]) => `<div class=set-row><div><div class=n>${esc(k)}</div><div class=h>${esc(s.help)}</div></div><div>${input(k, s)}</div></div>`).join('')}</div>`).join('')}
-    <div class=card><h2>Secrets (.env only)</h2><div class=faint style="margin-bottom:8px">Never stored in the database or shown here. Edit <span class=mono>.env</span> and restart.</div>
+    <div class=card><h2>Secrets</h2><div class=faint style="margin-bottom:8px">Never stored in the database or shown here. API keys: setup wizard (Keychain or .env). Others: edit <span class=mono>.env</span> and restart.</div>
      ${Object.entries(SET.secrets).map(([k, v]) => `<div class=sec-row><span class=mono>${esc(k)}</span><span class="pill ${v === 'set' ? 'ok' : ''}">${v}</span></div>`).join('')}
      <div class=sp></div><div class=faint>Home: <span class=mono>${esc(SET.home)}</span><br>Feedback inbox: <span class=mono>${esc(SET.feedback_dir)}</span><br>Prompts: <span class=mono>${esc(SET.prompts_dir)}</span></div></div></div>
    <div class=savebar><span class=faint id=dirty>No changes</span><button onclick="sig.set=0;refresh(true)">Discard</button><button class=primary onclick="saveSettings()">Save settings</button></div>`;
@@ -376,6 +386,173 @@ async function saveSettings() {
   await post('/api/settings', body); toast('Saved ' + Object.keys(body).length + ' setting(s)'); sig.set = 0; refresh(true);
 }
 
-const VIEWS = {status: vStatus, approvals: vApprovals, board: vBoard, feedback: vFeedback, agents: vAgents, docs: vDocs, settings: vSettings};
+
+/* ------------------------------------------------------------------ setup wizard (first run; also Settings > Setup wizard) */
+const WSTEPS = [['welcome', 'Welcome'], ['prereqs', 'Prerequisites'], ['providers', 'Models per role'], ['keys', 'Keys'],
+  ['test', 'Test connections'], ['identity', 'Studio identity'], ['accounts', 'GitHub & Play'], ['finish', 'Finish']];
+const ROLE_LABEL = {producer: 'Producer', designer: 'Game Designer', engineer: 'Engineer', artist: 'Artist', qa: 'QA + Compliance',
+  marketing: 'Marketing', analyst: 'Analyst', support: 'Customer Support', bugfixer: 'Bug Fixer'};
+let W = {i: 0, S: null, pre: null, tests: {}, summary: null};
+const wStep = () => WSTEPS[W.i][0];
+const provLabel = id => ((W.S?.providers || []).find(p => p.id === id) || {}).label || id || 'default';
+
+async function vSetup(force) {
+  if (!force && W.S) return;
+  W.S = await api('/api/setup');
+  if (force && W.first !== false) { const k = WSTEPS.findIndex(s => s[0] === W.S.step); W.i = k > 0 && !W.S.complete ? k : 0; W.first = false; }
+  wRender();
+}
+function wGo(i) { W.i = Math.max(0, Math.min(WSTEPS.length - 1, i)); post('/api/setup/step', {step: wStep()}).catch(() => {}); wRender(); window.scrollTo(0, 0); }
+function wNav(nextLabel, nextFn) {
+  return `<div class="wiz-nav">${W.i ? `<button onclick="wGo(${W.i - 1})">Back</button>` : '<span></span>'}
+    <button class="primary" onclick="${nextFn || `wGo(${W.i + 1})`}">${nextLabel || 'Next'}</button></div>`;
+}
+function wRender() {
+  const step = wStep();
+  const rail = `<div class="wiz-rail">${WSTEPS.map(([id, l], i) => `<button class="wiz-dot ${i === W.i ? 'on' : i < W.i ? 'done' : ''}" onclick="wGo(${i})"><span>${i < W.i ? '✓' : i + 1}</span><em>${l}</em></button>`).join('')}</div>`;
+  $('view').innerHTML = `<div class="wiz">${rail}<div class="card wiz-card" id="wizBody"></div></div>`;
+  ({welcome: wWelcome, prereqs: wPrereqs, providers: wProviders, keys: wKeys, test: wTest, identity: wIdentity, accounts: wAccounts, finish: wFinish})[step]();
+}
+function wWelcome() {
+  $('wizBody').innerHTML = `<div class="wiz-hero"><div class="logo big">AI</div><div><h2 class="wiz-h">Welcome to your studio</h2>
+    <div class="muted">Five minutes to get ${esc(W.S.identity.studio_name || 'your studio')} running on this Mac.</div></div></div>
+   <ol class="wiz-list">
+    <li><b>Check the toolchain</b>: Python, Godot 4.7, Android SDK + JDK, git and GitHub CLI, with how to fix anything missing.</li>
+    <li><b>Pick a model per agent</b>: one click presets (all Google AI Pro, Claude for engineering, local only, mixed) or row by row.</li>
+    <li><b>Add keys</b> for API providers. They go to the macOS Keychain (or <span class=mono>.env</span>), masked, never into the database or git.</li>
+    <li><b>Test each connection</b>, set your <b>studio identity</b>, read the GitHub + Play notes, done.</li></ol>
+   <div class="faint">Nothing here spends money, posts, or uploads. You can reopen this wizard any time from Settings.</div>
+   ${wNav('Start')}`;
+}
+async function wPrereqs() {
+  $('wizBody').innerHTML = '<h2 class="wiz-h">Prerequisites</h2><div class="empty">Checking your Mac...</div>';
+  W.pre = await api('/api/setup/prereqs');
+  const rows = W.pre.checks.map(c => `<div class="chk ${c.ok ? 'ok' : c.required ? 'bad' : 'warn'}">
+     <div class="chk-ic">${c.ok ? '✓' : c.required ? '✕' : '!'}</div>
+     <div class="chk-b"><div><b>${esc(c.label)}</b> ${c.required ? '' : '<span class="tag">optional</span>'}</div>
+       <div class="faint mono">${esc(c.detail)}</div>${c.fix ? `<div class="fix"><b>Fix:</b> ${esc(c.fix)}</div>` : ''}</div></div>`).join('');
+  $('wizBody').innerHTML = `<div class=row><h2 class="wiz-h">Prerequisites</h2><span class=grow></span>
+     <span class="pill ${W.pre.ok ? 'ok' : 'warn'}">${W.pre.ok ? 'required tools ready' : 'something required is missing'}</span>
+     <button class=sm onclick="wPrereqs()">Re-check</button></div>
+   <div class="muted" style="margin:4px 0 12px">Android SDK, JDK and gh are only needed for store builds and pushing repos; you can continue without them.</div>
+   ${rows}${wNav()}`;
+}
+function provOptions(sel) {
+  return `<option value="" ${!sel ? 'selected' : ''}>default (${esc(W.S.default_engine)})</option>` +
+    W.S.providers.map(p => `<option value="${p.id}" ${sel === p.id ? 'selected' : ''}>${esc(p.label)}</option>`).join('');
+}
+function wProviders() {
+  const presets = Object.entries(W.S.presets).map(([k, p]) => `<button class="preset ${W.S.preset === k ? 'on' : ''}" onclick="wPreset('${k}')">
+     <b>${esc(p.label)}</b><span>${esc(p.blurb)}</span></button>`).join('');
+  const rows = Object.entries(W.S.roles).map(([r, c]) => { const p = W.S.providers.find(x => x.id === c.engine);
+    return `<div class="role-row"><div class="who">${avatar(r)}<b>${esc(ROLE_LABEL[r] || r)}</b></div>
+      <select id="wre_${r}" onchange="wRoleProv('${r}')">${provOptions(c.engine)}</select>
+      <input id="wrm_${r}" list="wml_${r}" value="${esc(c.model)}" placeholder="${esc((p && p.default_model) || 'model: provider default')}">
+      <datalist id="wml_${r}">${((p && p.models) || []).map(m => `<option value="${esc(m)}">`).join('')}</datalist></div>`; }).join('');
+  const used = W.S.providers.filter(p => p.used);
+  $('wizBody').innerHTML = `<h2 class="wiz-h">Models per role</h2>
+   <div class="muted" style="margin-bottom:12px">Pick a preset, then adjust any row. CLI agents edit files themselves; API and local models return files that the studio writes for them.</div>
+   <div class="presets">${presets}</div>
+   <div class="role-table">${rows}</div>
+   <details style="margin-top:12px"><summary class="muted">Cost and usage notes for the providers in use (${used.length})</summary>
+     ${used.map(p => `<div class="cost"><b>${esc(p.label)}</b><div class=faint>${esc(p.cost_note)}</div></div>`).join('') || '<div class=faint>none</div>'}</details>
+   ${wNav('Save and continue', 'wSaveRoles()')}`;
+}
+function wRoleProv(r) { const p = W.S.providers.find(x => x.id === $('wre_' + r).value); const m = $('wrm_' + r);
+  m.placeholder = (p && p.default_model) || 'model: provider default'; m.value = '';
+  $('wml_' + r).innerHTML = ((p && p.models) || []).map(x => `<option value="${esc(x)}">`).join(''); }
+async function wPreset(k) { await post('/api/setup/preset', {preset: k}); W.S = await api('/api/setup'); toast('Preset applied: ' + W.S.presets[k].label); wRender(); }
+async function wSaveRoles() {
+  const roles = {}; Object.keys(W.S.roles).forEach(r => roles[r] = {engine: $('wre_' + r).value, model: $('wrm_' + r).value.trim()});
+  await post('/api/setup/roles', {roles}); W.S = await api('/api/setup'); wGo(W.i + 1);
+}
+function wKeys() {
+  const need = new Set(W.S.providers.filter(p => p.used && p.key_env).map(p => p.key_env));
+  const k = W.S.keys.keys, be = W.S.keys.backends;
+  const card = name => { const st = k[name] || {}; const users = W.S.providers.filter(p => p.key_env === name).map(p => p.label).join(', ');
+    return `<div class="key-row ${need.has(name) ? 'need' : ''}"><div><b class=mono>${esc(name)}</b> ${need.has(name) ? '<span class="pill acc">needed</span>' : ''}
+       <div class=faint>${esc(users || 'Codex CLI (optional, only with codex_use_api_key)')}</div></div>
+       <div>${st.set ? `<span class="pill ok">set · ${esc(st.masked)} · ${esc(st.source)}</span>` : '<span class=pill>not set</span>'}</div>
+       <div class="key-in"><input type=password id="wk_${name}" placeholder="paste key" autocomplete="off">
+         <select id="wkb_${name}">${be.map(b => `<option value="${b}">${b === 'keychain' ? 'macOS Keychain' : '.env file'}</option>`).join('')}</select>
+         <button class=sm onclick="wSaveKey('${name}')">Save</button></div></div>`; };
+  const names = Object.keys(k);
+  $('wizBody').innerHTML = `<h2 class="wiz-h">API keys</h2>
+   <div class="muted" style="margin-bottom:12px">${need.size ? 'Only the keys marked <b>needed</b> are used by your current role setup.' : 'Your current setup needs no API keys (CLI logins and local models).'}
+     Keys are saved to ${be.includes('keychain') ? 'the macOS Keychain (service <span class=mono>ai-game-studio</span>) or' : ''} the local <span class=mono>.env</span> file (gitignored, chmod 600), shown masked, never stored in the database or committed.</div>
+   ${names.filter(n => need.has(n)).map(card).join('')}
+   <details ${need.size ? '' : 'open'}><summary class="muted">Other keys</summary>${names.filter(n => !need.has(n)).map(card).join('')}</details>
+   <div class="faint" style="margin-top:10px">CLI logins (agy, claude, codex) live in each tool's own keychain entry: run the tool once in Terminal to sign in.</div>
+   ${wNav()}`;
+}
+async function wSaveKey(name) { const v = $('wk_' + name).value.trim(); if (!v) return toast('Paste the key first', true);
+  const r = await post('/api/setup/keys', {name, value: v, backend: $('wkb_' + name).value}); $('wk_' + name).value = '';
+  toast(`${name} saved (${r.masked})`); W.S = await api('/api/setup'); wRender(); }
+function wTest() {
+  const used = W.S.providers.filter(p => p.used);
+  $('wizBody').innerHTML = `<h2 class="wiz-h">Test connections</h2>
+   <div class="muted" style="margin-bottom:12px"><b>Test</b> checks the binary, key or server without spending tokens. <b>Deep test</b> sends one tiny prompt ("Reply OK"): a few tokens of quota or cost.</div>
+   ${used.map(p => { const t = W.tests[p.id]; return `<div class="chk ${t ? (t.ok ? 'ok' : 'bad') : ''}"><div class="chk-ic">${t ? (t.ok ? '✓' : '✕') : '?'}</div>
+     <div class="chk-b"><div class=row><b>${esc(p.label)}</b><span class=tag>${esc(p.kind)}</span><span class=grow></span>
+       <button class=sm onclick="wDoTest('${p.id}',false)">Test</button><button class=sm onclick="wDoTest('${p.id}',true)">Deep test</button></div>
+       <div class="faint">${esc(p.cost_note)}</div>
+       ${t ? `<div class="mono" style="margin-top:4px">${esc(t.detail)}${t.latency_ms ? ' · ' + t.latency_ms + ' ms' : ''}</div>${t.fix ? `<div class="fix"><b>Fix:</b> ${esc(t.fix)}</div>` : ''}` : ''}</div></div>`; }).join('') || '<div class=empty>No providers selected.</div>'}
+   <div class=row style="margin-top:10px"><button onclick="wTestAll()">Test all</button></div>
+   ${wNav()}`;
+}
+async function wDoTest(id, deep) { toast((deep ? 'Deep testing ' : 'Testing ') + provLabel(id) + '...'); W.tests[id] = await post(`/api/providers/${id}/test`, {deep}); wTest(); }
+async function wTestAll() { for (const p of W.S.providers.filter(p => p.used)) { W.tests[p.id] = await post(`/api/providers/${p.id}/test`, {deep: false}); } wTest(); }
+function wIdentity() {
+  const d = W.S.identity;
+  const f = (k, l, ph, h) => `<div class=field><label class=f>${l}</label><input id="wi_${k}" value="${esc(d[k] || '')}" placeholder="${ph}">${h ? `<div class=faint>${h}</div>` : ''}</div>`;
+  $('wizBody').innerHTML = `<h2 class="wiz-h">Studio identity</h2>
+   <div class="muted" style="margin-bottom:12px">Used in every new game (intro, package id, in-game legal screen), store listings, privacy policy URLs and the launch audit.</div>
+   <div class="grid g2">${f('studio_name', 'Studio name', 'Ottran Studios', 'Shown in the intro of every game')}
+   ${f('package_prefix', 'Android package prefix', 'com.ottranstudios', 'Games get &lt;prefix&gt;.&lt;slug&gt;. A published package id can never change.')}
+   ${f('contact_email', 'Public contact email', 'ottranstudios@gmail.com', 'Store listing, privacy policy, in-game contact')}
+   ${f('studio_website', 'Website', 'https://ottranstudios.com', 'Listing website; policies at /&lt;slug&gt;/privacy-policy.html')}
+   ${f('github_owner', 'GitHub account (optional)', 'dharasudhan', 'Where you keep the private game repos')}
+   <div class=field><label class=f>Play developer account</label><select id="wi_play_account_type">${['personal', 'organization'].map(o => `<option ${d.play_account_type === o ? 'selected' : ''}>${o}</option>`).join('')}</select>
+     <div class=faint>Personal accounts must run a 12-tester, 14-day closed test before production.</div></div></div>
+   ${wNav('Save and continue', 'wSaveIdentity()')}`;
+}
+async function wSaveIdentity() {
+  const b = {}; ['studio_name', 'package_prefix', 'contact_email', 'studio_website', 'github_owner', 'play_account_type'].forEach(k => b[k] = $('wi_' + k).value.trim());
+  await post('/api/setup/identity', b); W.S = await api('/api/setup'); toast('Identity saved'); wGo(W.i + 1);
+}
+function wAccounts() {
+  $('wizBody').innerHTML = `<h2 class="wiz-h">GitHub and Google Play</h2>
+   <div class="grid g2">
+    <div class="note"><h3>GitHub (source control)</h3><ul>
+      <li>One <b>private</b> repo per game. The studio commits locally; <b>you</b> push (it never pushes).</li>
+      <li>Never commit keys, keystores, passwords, <span class=mono>.env</span> or builds (APK/AAB). Every game's <span class=mono>.gitignore</span> covers them.</li>
+      <li>Run a secret scan before every push: <span class=mono>./run.sh scan games/&lt;slug&gt;</span>.</li>
+      <li>Push small diffs as single commits. Sign in once: <span class=mono>gh auth login</span>.</li></ul></div>
+    <div class="note"><h3>Google Play</h3><ul>
+      <li>Personal developer accounts: <b>12 testers opted in for 14 days</b> on a closed test before production. Keep testers in a Google Group.</li>
+      <li>Upload an <b>AAB signed with your upload key</b>, bump <b>versionCode</b> every upload, target SDK <b>36</b>.</li>
+      <li>The store asset picker rejected PNG screenshots: export <b>JPEG</b>. Feature graphic 1024x500.</li>
+      <li>Privacy policy URL must be live and name the <b>final package id</b>: redeploy it when the package changes.</li>
+      <li>Review can take <b>up to 7 days</b>. The launch-readiness audit must pass before Gate 5.</li></ul></div>
+    <div class="note"><h3>Public posts</h3><ul>
+      <li>Anything public waits at <b>Gate 6</b>.</li><li>Instagram goes through the Meta (Instagram Graph) API, not browser automation.</li>
+      <li>The X API is paid: that is a Gate 4 spend first.</li></ul></div>
+    <div class="note"><h3>Money</h3><ul><li>The studio never pays. Every spend is a Gate 4 request; you buy it yourself and click <b>Mark spent</b>.</li>
+      <li>API providers bill per token: watch the cost notes in step 3 and the daily token cap in Settings.</li></ul></div>
+   </div>${wNav('Review summary')}`;
+}
+async function wFinish() {
+  $('wizBody').innerHTML = '<h2 class="wiz-h">Finish</h2><div class="empty">Saving...</div>';
+  W.summary = await post('/api/setup/finish');
+  const s = W.summary;
+  $('wizBody').innerHTML = `<div class="wiz-hero"><div class="logo big ok">✓</div><div><h2 class="wiz-h">You're set up</h2><div class=muted>${esc(s.identity.studio_name)} · ${esc(s.identity.package_prefix)}.&lt;slug&gt; · ${esc(s.identity.contact_email)}</div></div></div>
+   ${s.missing.length ? `<div class="fix" style="margin-bottom:12px"><b>Still missing:</b> ${s.missing.map(esc).join('; ')}. Agents on those providers will pause the queue until you add the key.</div>` : ''}
+   <div class=tbl><table><tr><th>Agent</th><th>Provider</th><th>Model</th></tr>${s.roles.map(r => `<tr><td>${esc(ROLE_LABEL[r.role] || r.role)}</td><td>${esc(r.label)}</td><td class=mono>${esc(r.model)}</td></tr>`).join('')}</table></div>
+   <div class=faint style="margin-top:8px">Keys set: ${Object.values(s.keys).map(k => `${esc(k.name)} (${esc(k.masked)}, ${esc(k.source)})`).join(', ') || 'none'}</div>
+   <div class="wiz-nav"><button onclick="wGo(2)">Change models</button><a class="btn primary" href="#board">Start a new game</a></div>`;
+  refresh(false);
+}
+
+const VIEWS = {setup: vSetup, status: vStatus, approvals: vApprovals, board: vBoard, feedback: vFeedback, agents: vAgents, docs: vDocs, settings: vSettings};
 route();
 setInterval(() => refresh(false), 4000);

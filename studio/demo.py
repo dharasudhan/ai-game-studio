@@ -18,6 +18,9 @@ def seed(home: Path):
     os.environ["STUDIO_STANDUP_ENABLED"] = "0"
     os.environ["STUDIO_MIN_SECONDS_BETWEEN_RUNS"] = "0"
     os.environ["STUDIO_NOTIFY_DESKTOP"] = "0"
+    os.environ["STUDIO_ENV_FILE"] = str(home / "demo.env")   # keys saved in the demo never reach your real .env
+    os.environ["STUDIO_NO_KEYCHAIN"] = "1"                    # ... nor your Keychain
+    os.environ["STUDIO_AUDIT_FETCH_PRIVACY_POLICY"] = "0"
     prompts = home / "prompts"
     if not prompts.exists():
         shutil.copytree(Path(__file__).resolve().parent / "prompt_defaults", prompts)

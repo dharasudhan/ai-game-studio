@@ -1,0 +1,8 @@
+{
+  "studio": "{{STUDIO}}",
+  "contact_email": "{{CONTACT}}",
+  "website": "{{WEBSITE}}",
+  "privacy_policy_url": "{{PRIVACY_URL}}",
+  "package_id": "{{PACKAGE}}",
+  "_note": "Shown in the in-game Settings (Privacy policy, Contact, Credits). The privacy policy must be hosted (Gate 6) and must name this package id; redeploy it whenever the package changes."
+}

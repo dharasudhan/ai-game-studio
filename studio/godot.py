@@ -73,7 +73,7 @@ def run_qa(wt: Path, changed: list[str], godot_bin: str | None, timeout: int = 3
     rep = QAReport(godot=godot_bin)
     static_checks(wt, changed, rep)
     if not godot_bin:
-        rep.add("godot headless tests", None, "Godot not found; install Godot 4.3 or set godot_bin in Settings")
+        rep.add("godot headless tests", None, "Godot not found; install Godot 4.7.x or set godot_bin in Settings")
         return rep
     code, out = _run([godot_bin, "--headless", "--path", ".", "--import"], wt, timeout)
     rep.add("godot import", code == 0 and "SCRIPT ERROR" not in out, out if code else "")

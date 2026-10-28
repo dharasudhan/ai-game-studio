@@ -4,5 +4,11 @@ android/
 *.apk
 *.aab
 *.keystore
+*.jks
+*.p12
+.env
+.env.*
+keys/
+audit/*.pdf
 inbox/
 .DS_Store

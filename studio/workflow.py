@@ -16,13 +16,16 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from . import audit as audit_mod
 from . import gitops
-from .config import Paths, default_paths
+from .config import APP_ROOT, Paths, default_paths
 from .db import DB, dumps, loads, now
-from .engines import EngineError, EngineRequest, EngineResult, FakeEngine, build_engine
+from .engines import PROVIDERS, EngineError, EngineRequest, EngineResult, FakeEngine, build_engine
+from .keystore import Keychain, SecretStore
 from .feedback_flow import SupportMixin
 from .godot import android_export, find_godot, run_qa
 from .management import ManagementMixin
+from .wizard import SetupMixin
 from .notify import notify
 from .prompts import ROLES, ParseError, build_prompt, extract_json
 
@@ -30,6 +33,16 @@ TEMPLATE = Path(__file__).parent / "templates" / "godot"
 GATES = {1: "New game concept", 2: "Milestone plan", 3: "Code/build change -> main", 4: "Money spend",
          5: "Store release", 6: "Anything public"}
 WORK_AGENTS = {"engineer", "artist", "designer", "qa", "marketing", "analyst"}
+
+
+def fill_template(repo: Path, subs: dict[str, str]) -> None:
+    """Replace {{PLACEHOLDERS}} in the template's text files (never inside addons/, which holds binaries)."""
+    for f in Path(repo).rglob("*"):
+        if f.is_file() and f.suffix in {".godot", ".gd", ".cfg", ".md", ".json"} and "addons" not in f.relative_to(repo).parts:
+            txt = f.read_text()
+            for k, v in subs.items():
+                txt = txt.replace(k, v)
+            f.write_text(txt)
 
 
 class AgentOutputError(Exception):
@@ -41,8 +54,10 @@ def slugify(s: str, n: int = 40) -> str:
     return (s[:n].strip("-")) or "game"
 
 
-class Studio(SupportMixin, ManagementMixin):
-    def __init__(self, paths: Paths | None = None, fake_engine: FakeEngine | None = None):
+class Studio(SupportMixin, ManagementMixin, SetupMixin):
+    def __init__(self, paths: Paths | None = None, fake_engine: FakeEngine | None = None,
+                 secrets: SecretStore | None = None):
+        import os
         self.paths = paths or default_paths()
         self.paths.ensure()
         self.db = DB(self.paths.db)
@@ -52,6 +67,10 @@ class Studio(SupportMixin, ManagementMixin):
         self.throttle_lock = threading.Lock()
         self.tl = threading.local()   # per worker thread: engine name of the current run
         self.notifier = notify        # swappable in tests
+        env_file = Path(os.environ.get("STUDIO_ENV_FILE") or (APP_ROOT / ".env"))
+        no_kc = os.environ.get("STUDIO_NO_KEYCHAIN") == "1"
+        self.secrets = secrets or SecretStore(env_file, Keychain(force=False) if no_kc else None)
+        self.http_transport = None    # tests inject a fake HTTP transport for API providers
         self.seed_agents()
 
     # ------------------------------------------------------------------ utils
@@ -139,13 +158,14 @@ class Studio(SupportMixin, ManagementMixin):
         elif over.get(role):
             name = over[role]
         s = dict(s)
-        if cfg.get("model"):
-            key = {"agy": "agy_model", "gemini_cli": "gemini_model", "genai": "genai_model", "ollama": "ollama_model"}.get(name)
-            if key:
-                s[key] = cfg["model"]
+        spec = PROVIDERS.get(name)
+        if cfg.get("model") and spec and spec.model_setting:
+            s[spec.model_setting] = cfg["model"]
         if cfg.get("effort") and name == "agy":
             s["agy_effort"] = cfg["effort"]
-        return build_engine(name, s, self.fake)
+        if cfg.get("effort") and name == "openai":
+            s["openai_effort"] = cfg["effort"]
+        return build_engine(name, s, self.fake, self.secrets.get, self.http_transport)
 
     def _throttle(self) -> None:
         with self.throttle_lock:
@@ -158,7 +178,10 @@ class Studio(SupportMixin, ManagementMixin):
     def call_agent(self, job: dict, role: str, task: str, context: str, cwd: Path, edit: bool = False) -> dict:
         engine = self.engine_for(role, task)
         self.tl.engine = engine.name
-        prompt = build_prompt(self.paths.prompts, role, task, context, self.feedback_for(job.get("game_id"), role))
+        st = self.db.settings()
+        ident = (f"Studio: {st.get('studio_name', '')} | package ids {st.get('package_prefix', '')}.<slug> | "
+                 f"contact {st.get('contact_email', '')} | website {st.get('studio_website', '')}\n")
+        prompt = build_prompt(self.paths.prompts, role, task, ident + context, self.feedback_for(job.get("game_id"), role))
         if not isinstance(engine, FakeEngine):
             self._throttle()
         rid = self.db.insert("runs", job_id=job["id"], game_id=job.get("game_id"), agent=role, task=task,
@@ -169,7 +192,8 @@ class Studio(SupportMixin, ManagementMixin):
         except EngineError as e:
             self.db.update("runs", rid, status="error", error=f"{type(e).__name__}: {e}", finished_at=now())
             raise
-        self.db.update("runs", rid, output=res.text, tokens=res.tokens, model=res.model, finished_at=now(), status="ok")
+        self.db.update("runs", rid, output=res.text, tokens=res.tokens, model=res.model, finished_at=now(), status="ok",
+                       cost_usd=res.cost_usd)
         try:
             data = extract_json(res.text)
         except ParseError as e:
@@ -194,7 +218,7 @@ class Studio(SupportMixin, ManagementMixin):
             "analyst.analyze": self.h_analyze, "qa.health": self.h_qa_health,
             "support.ingest": self.h_support_ingest, "support.triage": self.h_support_triage,
             "support.redraft_reply": self.h_support_redraft, "support.fixed_replies": self.h_support_fixed_replies,
-            "bugfix.intake": self.h_bugfix_intake,
+            "bugfix.intake": self.h_bugfix_intake, "qa.launch_audit": self.h_launch_audit,
         }.get(job["kind"])
         if not handler:
             raise AgentOutputError(f"unknown job kind {job['kind']}")
@@ -257,14 +281,20 @@ class Studio(SupportMixin, ManagementMixin):
             slug, n = f"{base}-{n}", n + 1
         repo = self.paths.games / slug
         shutil.copytree(TEMPLATE, repo)
-        for f in repo.rglob("*"):
-            if f.is_file() and f.suffix in {".godot", ".gd", ".cfg", ".md"}:
-                txt = f.read_text()
-                f.write_text(txt.replace("{{TITLE}}", title.replace('"', "'")).replace("{{SLUG_ID}}", slug.replace("-", "_")))
+        st = self.db.settings()
+        slug_id = slug.replace("-", "_")
+        prefix = (st.get("package_prefix") or "com.ottranstudios").strip(".")
+        site = (st.get("studio_website") or "").rstrip("/")
+        subs = {"{{TITLE}}": title.replace('"', "'"), "{{SLUG_ID}}": slug_id, "{{SLUG}}": slug,
+                "{{PACKAGE}}": f"{prefix}.{slug_id}", "{{STUDIO}}": st.get("studio_name") or "Ottran Studios",
+                "{{CONTACT}}": st.get("contact_email") or "", "{{WEBSITE}}": site,
+                "{{PRIVACY_URL}}": f"{site}/{slug}/privacy-policy.html" if site else "",
+                "{{TARGET_SDK}}": st.get("play_target_sdk") or "36"}
+        fill_template(repo, subs)
         (repo / "docs").mkdir(exist_ok=True)
         (repo / "docs" / "concept.md").write_text(concept_md)
         gitops.init_repo(repo)
-        self.set_game(g["id"], package="com.ottranstudios." + slug.replace("-", "_"))
+        self.set_game(g["id"], package=subs["{{PACKAGE}}"])
         return slug, repo
 
     # --------------------------------------------------------------- planning
@@ -344,7 +374,7 @@ class Studio(SupportMixin, ManagementMixin):
         m = self.db.one("SELECT * FROM milestones WHERE id=?", t["milestone_id"]) or {}
         pitch = self.latest_doc(g["id"], "pitch_approved") or {}
         files = gitops.git(wt, "ls-files").splitlines()
-        ctx = (f"Game: {g['title']} (Godot 4.3, repo dir = current directory)\n"
+        ctx = (f"Game: {g['title']} (Godot 4.7, package {g.get('package') or '?'}, repo dir = current directory)\n"
                f"Concept summary:\n{pitch.get('content', '')[:3000]}\n\n"
                f"Milestone: {m.get('title', '')} - {m.get('goal', '')}\n"
                f"TICKET #{t['id']}: {t['title']}\n{t['description']}\n\n"
@@ -536,7 +566,28 @@ class Studio(SupportMixin, ManagementMixin):
         self.db.update("ledger", ledger_id, status="spent", decided_at=now())
 
     # Gate 5
+    def release_block_reason(self, game_id: int) -> str:
+        """'' when the launch audit allows a store upload, otherwise why Gate 5 must stay closed."""
+        if self.db.get("audit_required_for_release", "1") != "1":
+            return ""
+        au = self.latest_audit(game_id)
+        if not au:
+            return "no launch-readiness audit has run for this build (Games > Actions > Run launch audit)"
+        g = self.game(game_id)
+        cur = audit_mod.read_preset(Path(g["repo_path"])).get("version/code") if g["repo_path"] else None
+        if cur and str(au["version_code"]) != str(cur):
+            return f"the latest audit is for versionCode {au['version_code']} but the build is {cur}: run the audit again"
+        if au["blockers"]:
+            return f"the launch audit has {au['blockers']} open blocker(s) (see {au['pdf_path']})"
+        return ""
+
     def _on_approve_release(self, a: dict, p: dict) -> None:
+        why = self.release_block_reason(a["game_id"])
+        if why:
+            raise ValueError("Launch audit blocks the upload: " + why)
+        au = self.latest_audit(a["game_id"])
+        if au:
+            self.set_game(a["game_id"], released_version_code=au["version_code"])
         self.set_game(a["game_id"], status="released")
         self.log("Release approved. Upload the build in Play Console yourself; this app never uploads or publishes.",
                  a["game_id"], agent="marketing")
@@ -567,12 +618,69 @@ class Studio(SupportMixin, ManagementMixin):
             ok, detail = android_export(repo, godot, repo / "build" / "android")
             build = ("SKIPPED: " if ok is None else ("OK: " if ok else "FAILED: ")) + detail
         self.add_doc(g["id"], "release_qa", "Release QA + build", rep.markdown() + "\n\n**Android build:** " + build, "qa")
-        self.enqueue(g["id"], "marketing", "marketing.release_kit", {"build": build, "qa": rep.markdown()})
+        # standing rule: a launch-readiness audit runs before EVERY closed-test/production upload
+        self.enqueue(g["id"], "qa", "qa.launch_audit", {"build": build, "qa": rep.markdown(), "then_release_kit": True})
+
+    # ------------------------------------------------------- launch audit
+    def latest_audit(self, game_id: int) -> dict | None:
+        return self.db.one("SELECT * FROM audits WHERE game_id=? ORDER BY id DESC LIMIT 1", game_id)
+
+    def request_audit(self, game_id: int) -> int:
+        g = self.game(game_id)
+        if not g["repo_path"]:
+            raise ValueError("this game has no repo yet (approve its concept at Gate 1 first)")
+        qa = self.latest_doc(game_id, "release_qa") or {}
+        return self.enqueue(game_id, "qa", "qa.launch_audit", {"qa": qa.get("content", ""), "build": ""}, front=True)
+
+    def h_launch_audit(self, job: dict, p: dict) -> None:
+        g = self.game(job["game_id"])
+        repo = Path(g["repo_path"])
+        s = self.db.settings()
+        pre = audit_mod.read_preset(repo)
+        version = pre.get("version/name") or g.get("version") or "0.0.0"
+        try:
+            code = int(pre.get("version/code") or 0)
+        except ValueError:
+            code = 0
+        items = audit_mod.deterministic_checks(repo, g["slug"], s, p.get("qa", ""), int(g.get("released_version_code") or 0),
+                                               getattr(self, "audit_fetch", None))
+        auto = "\n".join(f"- {i['verdict']} [{i['area']}] {i['check']}" for i in items if i["source"] == "auto")
+        ctx = (f"Game: {g['title']} v{version} (versionCode {code}), package {pre.get('package/unique_name', '?')}\n"
+               f"Studio: {s.get('studio_name')}, contact {s.get('contact_email')}, website {s.get('studio_website')}\n"
+               f"Play account: {s.get('play_account_type')} (personal = 12 testers x 14 days closed test before production)\n\n"
+               f"Automated checks already done:\n{auto}\n\nRelease QA:\n{p.get('qa', '')[:4000]}\n\nBuild: {p.get('build', '')[:800]}\n"
+               f"Repository files:\n" + "\n".join(gitops.git(repo, "ls-files").splitlines()[:300]) + "\n")
+        data = self.call_agent(job, "qa", "qa.launch_audit", ctx, repo, edit=False)
+        gitops.git(repo, "checkout", "--", ".")  # an auditor never leaves edits behind on main
+        gitops.git(repo, "clean", "-q", "-fd", "-e", "audit/")
+        items = audit_mod.merge_agent_items(items, data)
+        sm = audit_mod.summarize(items)
+        md = audit_mod.render_markdown(g["title"], version, code, items, str(data.get("summary", ""))[:600])
+        pdf = repo / "audit" / f"launch_audit_v{version}.pdf"
+        audit_mod.write_pdf(md, pdf, f"{g['title']} launch audit v{version}")
+        aid = self.db.insert("audits", game_id=g["id"], version=version, version_code=code, blockers=sm["blockers"],
+                             todos=sm["todos"], verdict=sm["verdict"], items_json=dumps(items), markdown=md,
+                             pdf_path=str(pdf), created_at=now())
+        self.add_doc(g["id"], "launch_audit", f"Launch audit v{version} ({code}): {sm['verdict']}, {sm['blockers']} blocker(s)", md, "qa")
+        self.set_game(g["id"], version=g.get("version") or version, version_code=code)
+        lvl = "warn" if sm["blockers"] else "info"
+        self.log(f"Launch audit v{version}: {sm['verdict']} ({sm['blockers']} blockers, {sm['todos']} to check). PDF: {pdf}",
+                 g["id"], agent="qa", level=lvl)
+        self.notify("approvals", f"Launch audit {g['title']}: {sm['verdict']}", f"{sm['blockers']} blocker(s); PDF in {pdf.parent}")
+        if p.get("then_release_kit"):
+            self.enqueue(g["id"], "marketing", "marketing.release_kit",
+                         {"build": p.get("build", ""), "qa": p.get("qa", ""), "audit_id": aid})
 
     def h_release_kit(self, job: dict, p: dict) -> None:
         g = self.game(job["game_id"])
         pitch = self.latest_doc(g["id"], "pitch_approved") or {}
-        ctx = f"Game: {g['title']}\nConcept:\n{pitch.get('content', '')[:6000]}\n\nRelease QA:\n{p.get('qa', '')[:3000]}\n"
+        s = self.db.settings()
+        ctx = (f"Game: {g['title']} (package {g.get('package') or '?'})\nStudio: {s.get('studio_name')}; contact email "
+               f"{s.get('contact_email')}; website {s.get('studio_website')} (put both on the listing)\n"
+               f"Concept:\n{pitch.get('content', '')[:6000]}\n\nRelease QA:\n{p.get('qa', '')[:3000]}\n")
+        au = self.latest_audit(g["id"])
+        if au:
+            ctx += f"\nLaunch audit: {au['verdict']} with {au['blockers']} blocker(s).\n"
         if p.get("feedback"):
             ctx += f"\nOwner's rejection note on the last release kit: {p['feedback']}\n"
         data = self.call_agent(job, "marketing", "marketing.release_kit", ctx, self.scratch(g["id"]))
@@ -584,9 +692,12 @@ class Studio(SupportMixin, ManagementMixin):
         if "store_listing_markdown" not in ids:
             raise AgentOutputError("release kit missing store listing")
         self._side_requests(g["id"], "marketing", {"public_actions": data.get("public_actions")})
-        self.create_approval(g["id"], 5, "release", f"Release {g['title']} to the store", "Store listing + build",
+        audit_info = {"audit_id": au["id"], "audit_verdict": au["verdict"], "audit_blockers": au["blockers"],
+                      "audit_pdf": au["pdf_path"], "audit_version": au["version"], "audit_code": au["version_code"]} if au else {}
+        title = f"Release {g['title']} to the store" + (f" (AUDIT: {au['blockers']} BLOCKER(S))" if au and au["blockers"] else "")
+        self.create_approval(g["id"], 5, "release", title, "Store listing + build + launch audit",
                              {"build": p.get("build", ""), "qa": p.get("qa", ""), "docs": ids,
-                              "store_listing": data["store_listing_markdown"]}, "marketing")
+                              "store_listing": data["store_listing_markdown"], **audit_info}, "marketing")
         self.set_game(g["id"], status="release_review")
 
     def h_public_redraft(self, job: dict, p: dict) -> None:

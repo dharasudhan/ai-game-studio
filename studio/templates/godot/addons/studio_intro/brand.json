@@ -1,0 +1,27 @@
+{
+  "_doc": "Brand for the Ottran Studios intro + loading kit (copied from the studio master kit; edit the master and re-copy). Store logos are not shipped in games.",
+  "studio_name": "Ottran Studios",
+  "wordmark": "OTTRAN",
+  "subline": "STUDIOS",
+  "mascot_slot": "auto",
+  "colors": {
+    "bg_top": "#FFF7E8",
+    "bg_bottom": "#FFD9B8",
+    "letter": "#3A8DFF",
+    "letter_hi": "#A9D4FF",
+    "outline": "#1F2559",
+    "shadow": "#1F255938",
+    "subline": "#1F2559",
+    "mascot": "#FF5DA2",
+    "mascot_shade": "#D93A85",
+    "mascot_hi": "#FFC4DE",
+    "cheek": "#FF2E7E66",
+    "eye": "#1F2559",
+    "sparkle": "#FFD23F"
+  },
+  "font": "res://addons/studio_intro/fonts/Fredoka-Bold.ttf",
+  "font_weight": 700,
+  "jingle": "res://addons/studio_intro/audio/jingle.ogg",
+  "jingle_volume_db": -3.0,
+  "audio_bus": "Master"
+}

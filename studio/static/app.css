@@ -203,3 +203,46 @@ tr:last-child td{border-bottom:0}
   .kpi .v{font-size:22px}
   .hide-m{display:none}
 }
+
+/* setup wizard */
+.wiz{max-width:1040px;margin:0 auto}
+.wiz-rail{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 12px;scrollbar-width:none}.wiz-rail::-webkit-scrollbar{display:none}
+.wiz-dot{display:flex;align-items:center;gap:8px;background:transparent;border:1px solid var(--line);border-radius:99px;padding:5px 12px 5px 5px;color:var(--dim);flex:0 0 auto}
+.wiz-dot span{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;background:rgba(255,255,255,.07)}
+.wiz-dot em{font-style:normal;font-size:12px}
+.wiz-dot.on{border-color:rgba(139,123,255,.7);color:var(--ink);background:rgba(139,123,255,.12)}
+.wiz-dot.on span{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#0a0c11}
+.wiz-dot.done span{background:rgba(60,207,142,.2);color:var(--ok)}
+.wiz-card{padding:22px 24px}
+.card .wiz-h,.wiz-h{font-size:20px;margin-bottom:6px;text-transform:none;letter-spacing:-.01em;color:var(--ink)}
+.wiz-hero{display:flex;gap:16px;align-items:center;margin-bottom:16px}
+.logo.big{width:56px;height:56px;border-radius:16px;font-size:20px;flex:0 0 auto}.logo.ok{background:linear-gradient(135deg,#3ccf8e,#4cc2ff)}
+.wiz-list{margin:6px 0 14px;padding-left:20px;display:grid;gap:8px;color:var(--dim)}.wiz-list b{color:var(--ink)}
+.wiz-nav{display:flex;justify-content:space-between;gap:10px;margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+.wiz-nav .btn.primary{background:linear-gradient(135deg,var(--acc),#6d5cf0);border-color:transparent;color:#fff;text-decoration:none}
+.chk{display:flex;gap:12px;padding:12px;border:1px solid var(--line);border-radius:12px;margin-bottom:8px;background:rgba(255,255,255,.015)}
+.chk-ic{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-weight:800;flex:0 0 auto;background:rgba(255,255,255,.06);color:var(--dim)}
+.chk.ok .chk-ic{background:rgba(60,207,142,.16);color:var(--ok)}.chk.bad .chk-ic{background:rgba(255,93,108,.16);color:var(--bad)}.chk.warn .chk-ic{background:rgba(245,183,72,.16);color:var(--warn)}
+.chk.bad{border-color:rgba(255,93,108,.3)}.chk-b{min-width:0;flex:1}.chk-b .mono{overflow-wrap:anywhere}
+.fix{margin-top:6px;font-size:12.5px;padding:8px 10px;border-radius:9px;background:rgba(245,183,72,.07);border:1px solid rgba(245,183,72,.22);color:#f3d9a4;overflow-wrap:anywhere}
+.presets{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.preset{display:flex;flex-direction:column;gap:5px;text-align:left;white-space:normal;padding:12px;border-radius:12px;height:100%}
+.preset b{font-size:13px}.preset span{font-size:11.5px;color:var(--dim);font-weight:450;line-height:1.4}
+.preset.on{border-color:rgba(139,123,255,.8);background:rgba(139,123,255,.14);box-shadow:0 0 0 3px rgba(139,123,255,.12)}
+.role-table{display:flex;flex-direction:column;gap:2px}
+.role-row{display:grid;grid-template-columns:200px minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.role-row .who{display:flex;gap:10px;align-items:center}.role-row .avatar{width:30px;height:30px;border-radius:9px;font-size:11px}
+.role-row select{width:100%}
+.cost{padding:8px 0;border-bottom:1px solid var(--line)}
+.key-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;align-items:center;padding:12px;border:1px solid var(--line);border-radius:12px;margin-bottom:8px}
+.key-row.need{border-color:rgba(139,123,255,.35)}
+.key-in{grid-column:1/-1;display:flex;gap:8px}.key-in input{flex:1}.key-in select{flex:0 0 auto}
+.note{border:1px solid var(--line);border-radius:12px;padding:14px;background:rgba(255,255,255,.015)}
+.note h3{font-size:14px;margin-bottom:6px}.note ul{margin:0;padding-left:18px;display:grid;gap:6px;color:var(--dim);font-size:13px}.note b{color:var(--ink)}
+@media (max-width:860px){
+  .wiz-card{padding:16px}.presets{grid-template-columns:1fr 1fr}
+  .role-row{grid-template-columns:1fr;gap:6px}
+  .key-in{flex-wrap:wrap}.key-in input{flex:1 1 100%}
+  .wiz-dot em{display:none}.wiz-dot.on em{display:inline}
+}
+@media (max-width:420px){.presets{grid-template-columns:1fr}}

@@ -7,6 +7,7 @@ if [ -f .env ]; then set -a; . ./.env; set +a; fi
 [ -d .venv ] || { echo "Run ./setup.sh first"; exit 1; }
 . .venv/bin/activate
 if [ "${1:-}" = "doctor" ]; then exec python -m studio doctor; fi
+if [ "${1:-}" = "scan" ]; then shift; exec python -m studio scan "${1:-.}"; fi
 if [ "${1:-}" = "demo" ]; then shift; exec python -m studio demo "$@"; fi
 if [ "${1:-}" = "--awake" ]; then
   # keep the Mac from idle-sleeping while the studio runs (lid-close still sleeps; work resumes on wake)

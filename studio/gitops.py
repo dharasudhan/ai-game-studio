@@ -23,7 +23,7 @@ def git(cwd: Path, *args: str, check: bool = True) -> str:
 def init_repo(repo: Path) -> None:
     git(repo, "init", "-q", "-b", "main")
     git(repo, "add", "-A")
-    git(repo, "commit", "-q", "-m", "Initial Godot 4.3 project skeleton")
+    git(repo, "commit", "-q", "-m", "Initial Godot 4.7 project skeleton (Ottran Studios template)")
 
 
 def head(cwd: Path, ref: str = "HEAD") -> str:

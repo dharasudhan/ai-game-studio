@@ -28,8 +28,13 @@ def studio(tmp_path, fake, monkeypatch):
     prompts = tmp_path / "prompts"
     shutil.copytree(ROOT / "prompts", prompts)
     monkeypatch.setenv("STUDIO_PROMPTS", str(prompts))
-    for k in ("STUDIO_IMAP_HOST", "STUDIO_IMAP_USER", "STUDIO_IMAP_PASSWORD", "STUDIO_NOTIFY_WEBHOOK"):
+    for k in ("STUDIO_IMAP_HOST", "STUDIO_IMAP_USER", "STUDIO_IMAP_PASSWORD", "STUDIO_NOTIFY_WEBHOOK",
+              "GEMINI_API_KEY", "GOOGLE_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY", "CODEX_API_KEY"):
         monkeypatch.delenv(k, raising=False)
+    # never touch the real Keychain or the real .env; never fetch the network from an audit
+    monkeypatch.setenv("STUDIO_NO_KEYCHAIN", "1")
+    monkeypatch.setenv("STUDIO_ENV_FILE", str(tmp_path / "test.env"))
+    monkeypatch.setenv("STUDIO_AUDIT_FETCH_PRIVACY_POLICY", "0")
     st = Studio(Paths(tmp_path / "home"), fake_engine=fake)
     if not os.environ.get("GODOT_BIN"):
         # make sure a stray godot on PATH doesn't change results; real-engine runs set GODOT_BIN
