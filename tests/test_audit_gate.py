@@ -125,7 +125,7 @@ def test_deterministic_checks_cover_play_and_compliance_lessons(tmp_path):
                                              'gradle_build/target_sdk="34"\narchitectures/arm64-v8a=false\n'
                                              'keystore/release="/Users/m/upload.keystore"\n')
     (repo / "config" / "legal.json").write_text(json.dumps({"privacy_policy_url": "https://ottranstudios.com/g/privacy-policy.html",
-                                                            "contact_email": "dharasudhan@gmail.com"}))
+                                                            "contact_email": "old@example.com"}))
     (repo / "store" / "screenshots" / "01_screenshot.png").write_bytes(b"\x89PNG")
     (repo / "scripts" / "ads.gd").write_text("var admob = null\nfunc show(): admob.load_banner()\n")
     (repo / "upload.jks").write_bytes(b"\x00key")
