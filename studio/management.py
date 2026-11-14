@@ -171,7 +171,8 @@ class ManagementMixin:
         g = self.game(job["game_id"])
         repo = Path(g["repo_path"])
         from . import gitops
-        rep = run_qa(repo, gitops.git(repo, "ls-files").split(), find_godot(self.db.get("godot_bin")))
+        rep = run_qa(repo, gitops.git(repo, "ls-files").split(), find_godot(self.db.get("godot_bin")),
+                     **self.web_qa_args(g))
         self.add_doc(g["id"], "qa_report", f"QA health check on main: {'pass' if rep.passed else 'FAIL'}", rep.markdown(), "qa")
         self.log(f"QA health check on main: {'passed' if rep.passed else 'FAILED'}", g["id"], agent="qa",
                  level="info" if rep.passed else "warn")

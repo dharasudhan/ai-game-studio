@@ -428,7 +428,7 @@ class Studio(SupportMixin, ManagementMixin, SetupMixin):
         diff, changed = gitops.diff_vs_main(wt)
         godot = find_godot(self.db.get("godot_bin"))
         shots = self.paths.shots / g["slug"] / f"T{t['id']}" if self.db.get("qa_screenshots", "1") == "1" else None
-        rep = run_qa(wt, changed, godot, shots_dir=shots)
+        rep = run_qa(wt, changed, godot, shots_dir=shots, **self.web_qa_args(g, baseline=repo))
         if (t.get("kind") or "task") == "bug":
             self.bug_qa_checks(repo, wt, t, changed, godot, rep, p)
         loops = t["qa_loops"] or 0
@@ -470,6 +470,15 @@ class Studio(SupportMixin, ManagementMixin, SetupMixin):
                               "feedback_items": self.linked_item_ids(t["id"]),
                               "root_cause": p.get("root_cause", ""), "regression_test": p.get("regression_test", "")},
                              t["agent"], "ticket", t["id"])
+
+    def web_qa_args(self, g: dict, baseline: Path | None = None) -> dict:
+        """Settings for the headless browser play check and seeded replay of web games (1.7.0)."""
+        from .webplay import find_chrome
+        return {"platform": g.get("platform") or "android",
+                "chrome_bin": find_chrome(self.db.get("chrome_bin")),
+                "web_play": self.db.get("web_play_check", "1") == "1",
+                "replay": self.db.get("web_replay", "1") == "1",
+                "baseline": baseline}
 
     def decisions_client(self):
         from .decisions import client_from_settings
@@ -654,7 +663,8 @@ class Studio(SupportMixin, ManagementMixin, SetupMixin):
         platform = g.get("platform") or "android"
         ver = (g.get("version") or "release").replace("/", "-")
         rep = run_qa(repo, files, None if platform == "roblox" else godot,
-                     shots_dir=(self.paths.shots / g["slug"] / f"v{ver}") if self.db.get("qa_screenshots", "1") == "1" else None)
+                     shots_dir=(self.paths.shots / g["slug"] / f"v{ver}") if self.db.get("qa_screenshots", "1") == "1" else None,
+                     **self.web_qa_args(g))
         build = "Android export disabled in Settings"
         if platform != "android":
             build = (f"SKIPPED: {platform} builds are made on your Mac by you (Xcode / Roblox Studio / web export), "

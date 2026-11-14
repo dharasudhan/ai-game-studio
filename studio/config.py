@@ -118,6 +118,10 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "qa_max_loops": "3",
     "qa_android_export_on_release": "1",
     "qa_screenshots": "1",
+    # web games (1.7.0): headless Chrome plays the build with a scripted input and replays it vs main
+    "web_play_check": "1",
+    "web_replay": "1",
+    "chrome_bin": "",
     # Gemini Decisions API (1.6.0): cheap classification, needs GEMINI_API_KEY; off = 1.5.x behaviour
     "decisions_checks": "0",
     "decisions_model": "gemini-decision-1",
@@ -213,6 +217,9 @@ SETTINGS_SCHEMA: dict[str, dict] = {
     "android_export_dir": {"group": "Godot & Android", "type": "str", "help": "Export folder inside the game repo"},
     "qa_android_export_on_release": {"group": "Godot & Android", "type": "bool", "help": "Debug APK export during release QA"},
     "qa_screenshots": {"group": "Godot & Android", "type": "bool", "help": "Seen-it rule: launch the game in a window during QA and attach phone-size screenshots to Gate 3"},
+    "web_play_check": {"group": "Godot & Android", "type": "bool", "help": "Web games: headless Chrome plays the build with scripted taps and keys (no errors, draws, responds, readable text)"},
+    "web_replay": {"group": "Godot & Android", "type": "bool", "help": "Web games: replay the same seed and input on main and on the change, and show what moved at Gate 3"},
+    "chrome_bin": {"group": "Godot & Android", "type": "str", "help": "Chrome/Chromium for web QA (empty = auto-detect)"},
     "decisions_checks": {"group": "Engines", "type": "bool", "help": "Gemini Decisions API (needs GEMINI_API_KEY): sorts player reports and pre-checks QA screenshots without an LLM run"},
     "decisions_model": {"group": "Engines", "type": "str", "help": "Decisions model (gemini-decision-1)"},
     "decisions_min_confidence": {"group": "Engines", "type": "str", "help": "Use a Decisions answer only at or above this confidence (0-1)"},

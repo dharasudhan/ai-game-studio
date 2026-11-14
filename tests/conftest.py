@@ -39,6 +39,8 @@ def studio(tmp_path, fake, monkeypatch):
     if not os.environ.get("GODOT_BIN"):
         # make sure a stray godot on PATH doesn't change results; real-engine runs set GODOT_BIN
         monkeypatch.setattr("studio.workflow.find_godot", lambda configured="": None)
+    if not os.environ.get("CHROME_BIN"):
+        monkeypatch.setattr("studio.webplay.find_chrome", lambda configured="": None)
     return st
 
 

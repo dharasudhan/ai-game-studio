@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.7.0 - 2026-11-14 - web games play themselves in QA
+- Web games (an `index.html` and no `project.godot`, e.g. melonJS) now get a real play check in QA: headless
+  Chrome opens the page, taps and presses keys from a script, and fails the change on an uncaught error, a blank
+  canvas, input that changes nothing (compared with an idle run), or text under 12 px, off screen or overlapping.
+  A phone-size screenshot goes to Gate 3. No LLM call, no extra Python package.
+- Seeded replay: the harness owns the game's clock (timers, animation frames, performance.now, Date.now on 16 ms
+  frames) and seeds Math.random, so the same input gives the same frames every run. QA plays main and the change
+  with the same seed and input, and Gate 3 says which frames moved (plus main's last frame) and whether the game
+  state from `window.__studio_state()` changed.
+- A game can bring its own input script in `studio_play.json`. Settings: `web_play_check`, `web_replay`,
+  `chrome_bin` (auto-detects Chrome, Chromium or Edge). Without a browser the check is skipped, not failed.
+- Ideas taken from Donchitos/Claude-Code-Game-Studios (MIT): scripted key presses in a headless browser and a
+  seeded replay after every feature. The code is our own. Tests: 100 (10 new, two of them in a real browser).
+
 ## 1.6.0 - 2026-11-14 - Gemini Decisions API checks
 - Optional setting `decisions_checks` (Settings > Engines; needs `GEMINI_API_KEY`). Uses Google's Decisions API
   (`gemini-decision-1`), which only answers yes/no, choice and score questions and bills input tokens only.

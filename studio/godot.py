@@ -70,8 +70,27 @@ def static_checks(wt: Path, changed: list[str], rep: QAReport) -> None:
     rep.add("no generated/secret files committed", not forbidden, ", ".join(forbidden))
 
 
+def web_static_checks(wt: Path, changed: list[str], rep: QAReport) -> None:
+    bad = [f for f in changed if (wt / f).is_file() and Path(f).suffix in {".js", ".ts", ".html", ".css", ".json", ".md"}
+           and CONFLICT.search((wt / f).read_text(errors="ignore"))]
+    rep.add("no merge-conflict markers", not bad, ", ".join(bad))
+    forbidden = [f for f in changed if f.startswith(("node_modules/", ".env")) or f.endswith((".keystore", ".jks", ".pem"))]
+    rep.add("no dependencies/secret files committed", not forbidden, ", ".join(forbidden))
+
+
 def run_qa(wt: Path, changed: list[str], godot_bin: str | None, timeout: int = 300,
-           shots_dir: Path | None = None) -> QAReport:
+           shots_dir: Path | None = None, platform: str = "android", chrome_bin: str | None = None,
+           web_play: bool = True, baseline: Path | None = None, replay: bool = True) -> QAReport:
+    from . import webplay
+    if platform == "web" and webplay.is_web_game(wt):
+        # a browser game (melonJS etc.): no Godot project, so play it in headless Chrome instead (1.7.0)
+        rep = QAReport(godot=None)
+        web_static_checks(wt, changed, rep)
+        if web_play:
+            webplay.web_checks(wt, chrome_bin, rep, shots_dir=shots_dir, baseline=baseline, replay=replay)
+        else:
+            rep.add("web: headless play check", None, "off in Settings (web_play_check)")
+        return rep
     rep = QAReport(godot=godot_bin)
     static_checks(wt, changed, rep)
     if not godot_bin:

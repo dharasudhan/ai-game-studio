@@ -44,3 +44,9 @@ The Ottran Studios intro + loading kit in `studio/templates/godot/addons/studio_
 Plain HTML/CSS/JS written for this project (no framework, no CDN, no fonts fetched at runtime).
 Python dependencies: FastAPI, Uvicorn, python-multipart (pytest + httpx for tests). The optional google-genai
 dependency was dropped in 1.3: all providers are called with the standard library.
+
+## Web QA (1.7.0)
+The headless browser play check and the seeded replay follow two ideas from Donchitos/Claude-Code-Game-Studios
+(MIT licence): scripted key presses in a headless browser, and replaying the same seeded run after every
+feature. No code was copied; `studio/webplay.py` and its harness are written for this project. It drives any
+installed Chrome, Chromium or Edge from the command line.

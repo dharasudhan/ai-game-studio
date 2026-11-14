@@ -342,7 +342,15 @@ local-studio/
   data/  games/  feedback/   created at runtime (gitignored; feedback/ holds player data)
 ```
 
+New in 1.7: web QA, with a stub browser and, when Chrome or Chromium is installed, a real headless browser that
+plays a small canvas game, proves the replay gives the same frames twice and catches a broken page
+(`STUDIO_SKIP_BROWSER=1` skips the real-browser tests).
+
 ## Known limits
+- Web play check (1.7): it plays a script, not the game. A game that waits for a specific tap before anything
+  moves needs its own `studio_play.json`. Games that read time from somewhere other than timers, animation frames,
+  `performance.now` or `Date.now` (audio clock, Web Workers) can drift between replays. Assets that load after the
+  first 0.4 s settle can make the first frames differ.
 - The CLI adapters (`agy`, `claude`, `codex`) follow each vendor's published headless docs (checked 2026-10-28)
   and are tested against stub binaries; the API adapters are tested against a fake HTTP transport. None has been
   run against a live account from here: use the wizard's Deep test on your Mac first. Do step 3's `agy -p ... --output-format json` check first.
