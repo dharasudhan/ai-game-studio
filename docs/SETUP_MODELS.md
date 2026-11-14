@@ -42,7 +42,8 @@ path checks). Both work; CLI agents are better at multi-file changes.
 | Producer, Designer, Artist, Marketing | Antigravity CLI (AI Pro) | Gemini API `gemini-3.8-flash` | Ollama `qwen2.5-coder:7b` |
 | Customer Support, Analyst | Gemini API `gemini-3.8-flash` | `claude-haiku-5-5`, `gpt-6-luna` | Ollama `qwen2.5-coder:7b` |
 
-The wizard's presets set these for you: **All Google AI Pro**, **Claude for engineering + Gemini for the rest**,
+The wizard's presets set these for you: **Save my AI Pro quota** (recommended: only Engineer and Bug Fixer on
+Antigravity, the writing roles on the Gemini API free tier or Ollama, QA on Ollama, and a cap of 40 runs a day), **All Google AI Pro**, **Claude for engineering + Gemini for the rest**,
 **Local only (Ollama)** and **Mixed**. You can change any row afterwards (wizard step 3, or the Agents page).
 
 # 1. Antigravity CLI (default, uses your Google AI Pro subscription)

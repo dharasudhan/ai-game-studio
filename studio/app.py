@@ -292,6 +292,14 @@ def create_app(studio: Studio | None = None, start_worker: bool = True) -> FastA
         au["items"] = _j.loads(au.pop("items_json") or "[]")
         return {"audit": au, "block_reason": st.release_block_reason(gid)}
 
+    @app.get("/api/shots")
+    def shot_file(path: str):
+        root = st.paths.shots.resolve()
+        f = Path(path).resolve()
+        if root not in f.parents or f.suffix.lower() != ".png" or not f.exists():
+            raise HTTPException(404, "screenshot not found")
+        return FileResponse(f, media_type="image/png")
+
     @app.get("/api/audits/{aid}/pdf")
     def audit_pdf(aid: int):
         au = st.db.one("SELECT pdf_path FROM audits WHERE id=?", aid)

@@ -128,6 +128,7 @@ function payloadHtml(a, S) {
   if (a.kind === 'change') return `<div class=row>${p.kind === 'bug' ? '<span class="pill bad">player bug fix</span>' : ''}<span class=muted>${esc(a.summary)} · commit <span class=mono>${esc((p.sha || '').slice(0, 10))}</span></span>
       ${p.qa_passed ? '<span class="pill ok">QA passed</span>' : '<span class="pill bad">QA FAILED (loops exhausted)</span>'}</div>
      ${p.kind === 'bug' ? `<div class=muted style="margin-top:6px">Root cause: ${esc(p.root_cause || '-')} · regression test: <span class=mono>${esc(p.regression_test || 'none')}</span> · fixes ${(p.feedback_items || []).length} player report(s)</div>` : ''}
+     ${(p.shots || []).length ? `<div class=row style="margin:8px 0;gap:8px;overflow-x:auto">${p.shots.map(s => `<a href="/api/shots?path=${encodeURIComponent(s)}" target=_blank><img src="/api/shots?path=${encodeURIComponent(s)}" style="height:220px;border-radius:8px;border:1px solid var(--line)"></a>`).join('')}</div>` : '<div class="pill bad" style="margin:6px 0">No screenshots: the game was not launched in a window (seen-it rule)</div>'}
      <details><summary>QA report</summary><pre>${esc(p.qa_markdown)}</pre></details><details open><summary>Diff (${(p.files || []).length} files)</summary><pre>${diffHtml(p.diff || '')}</pre></details>`;
   if (a.kind === 'spend') { const b = S.budget; return `<div><b>${esc(p.amount)} ${esc(p.currency || b.currency)}</b> at ${esc(p.vendor)}: ${esc(p.reason)}</div><div class=muted>Committed this month: ${b.committed_this_month} / budget ${b.monthly || 'not set'} ${esc(b.currency)}. Approving only records it; you make the purchase.</div>`; }
   if (a.kind === 'release') return `<div class=muted>Approving marks it releasable; you upload in Play Console yourself. The launch-readiness audit must have no blockers.</div>
@@ -419,7 +420,7 @@ function wWelcome() {
     <div class="muted">Five minutes to get ${esc(W.S.identity.studio_name || 'your studio')} running on this Mac.</div></div></div>
    <ol class="wiz-list">
     <li><b>Check the toolchain</b>: Python, Godot 4.7, Android SDK + JDK, git and GitHub CLI, with how to fix anything missing.</li>
-    <li><b>Pick a model per agent</b>: one click presets (all Google AI Pro, Claude for engineering, local only, mixed) or row by row.</li>
+    <li><b>Pick a model per agent</b>: one click presets (save my AI Pro quota, all Google AI Pro, Claude for engineering, local only, mixed) or row by row.</li>
     <li><b>Add keys</b> for API providers. They go to the macOS Keychain (or <span class=mono>.env</span>), masked, never into the database or git.</li>
     <li><b>Test each connection</b>, set your <b>studio identity</b>, read the GitHub + Play notes, done.</li></ol>
    <div class="faint">Nothing here spends money, posts, or uploads. You can reopen this wizard any time from Settings.</div>
@@ -443,7 +444,7 @@ function provOptions(sel) {
     W.S.providers.map(p => `<option value="${p.id}" ${sel === p.id ? 'selected' : ''}>${esc(p.label)}</option>`).join('');
 }
 function wProviders() {
-  const presets = Object.entries(W.S.presets).map(([k, p]) => `<button class="preset ${W.S.preset === k ? 'on' : ''}" onclick="wPreset('${k}')">
+  const presets = Object.entries(W.S.presets).map(([k, p]) => `<button class="preset ${(W.S.preset || W.S.recommended) === k ? 'on' : ''}" onclick="wPreset('${k}')">
      <b>${esc(p.label)}</b><span>${esc(p.blurb)}</span></button>`).join('');
   const rows = Object.entries(W.S.roles).map(([r, c]) => { const p = W.S.providers.find(x => x.id === c.engine);
     return `<div class="role-row"><div class="who">${avatar(r)}<b>${esc(ROLE_LABEL[r] || r)}</b></div>

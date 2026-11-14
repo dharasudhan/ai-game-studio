@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.6.0 - 2026-11-14 - Gemini Decisions API checks
+- Optional setting `decisions_checks` (Settings > Engines; needs `GEMINI_API_KEY`). Uses Google's Decisions API
+  (`gemini-decision-1`), which only answers yes/no, choice and score questions and bills input tokens only.
+- Support triage: each player report gets a category, severity, sentiment and "needs a reply" answer. Confident
+  answers win over the LLM's, and reports that need no reply (plain praise, spam) never reach the Support LLM run.
+- QA screenshot pre-check: one request checks the seen-it screenshots for a blank frame, clipped text or UI under
+  the HUD. A flag sends the change straight back to the Engineer, skipping the QA LLM review for that loop.
+- Off by default, and skipped without a key or when a call fails, so nothing changes for 1.5.x setups. The
+  "Save my AI Pro quota" preset turns it on when a Gemini key is set. It never writes code, text or replies.
+- Thresholds: `decisions_min_confidence` (0.7), `decisions_fail_threshold` (0.85). Tests: 90 (6 new).
+
+## 1.5.1 - 2026-11-13 - save my AI Pro quota
+- New recommended setup preset "Save my AI Pro quota": only Engineer and Bug Fixer run on Antigravity (AI Pro).
+  Producer, Designer, Artist, Marketing, Support and Analyst use the Gemini API free tier (Ollama Qwen2.5-Coder 7B
+  when no GEMINI_API_KEY is set); QA uses Ollama Qwen2.5-Coder 7B.
+- Applying it sets `daily_run_cap` to 40 when no cap is set yet, so runs are spread over the day. A cap you set stays.
+- The wizard highlights it until you pick a preset. Existing installs: Settings > Setup wizard > Models per role.
+
+## 1.5.0 - 2026-11-13 - automatic seen-it screenshots
+- QA now opens the game in a real window on the Mac (Godot, OpenGL, 540x1170 portrait) and saves screenshots at
+  3, 6 and 10 s. Tickets go to `~/.../shots/<slug>/T<id>/` and releases to `shots/<slug>/v<version>/`.
+- The QA agent gets the screenshots and fails a change when anything is off-screen, clipped, overlapping or
+  under the HUD. Gate 3 cards show the screenshots, or a red "No screenshots" warning.
+- If Godot runs but saves no screenshot, QA fails. Without a display it's skipped. Setting: `qa_screenshots`.
+- Idea taken from OhMyGame's "agent plays the game to check it". Tests: 83 (4 new).
+
+## 1.4.1 - 2026-11-13
+- Web track: melonJS is now the default engine for small 2D web games. Godot's web export is kept for 3D, heavy games and ports.
+
 ## 1.4.0 - 2026-10-28 - platform tracks
 ### Added
 - Each game has a platform: Android (default), iOS, Roblox or Web, chosen in "Start a new game".

@@ -427,11 +427,25 @@ class Studio(SupportMixin, ManagementMixin, SetupMixin):
         repo, wt, branch = self._wt(g, t)
         diff, changed = gitops.diff_vs_main(wt)
         godot = find_godot(self.db.get("godot_bin"))
-        rep = run_qa(wt, changed, godot)
+        shots = self.paths.shots / g["slug"] / f"T{t['id']}" if self.db.get("qa_screenshots", "1") == "1" else None
+        rep = run_qa(wt, changed, godot, shots_dir=shots)
         if (t.get("kind") or "task") == "bug":
             self.bug_qa_checks(repo, wt, t, changed, godot, rep, p)
+        loops = t["qa_loops"] or 0
+        if rep.shots and self.decisions_shot_check(rep) is False and loops < self.db.geti("qa_max_loops", 3):
+            # cheap Decisions API pre-check flagged the screenshots: bounce back without spending a QA LLM run
+            qa_md = rep.markdown() + "\n\n**Screenshot pre-check failed** (Gemini Decisions API); QA agent review skipped.\n"
+            self.add_doc(g["id"], "qa_report", f"QA T#{t['id']} fail (screenshot pre-check)", qa_md, "qa")
+            self.set_ticket(t["id"], status="changes_requested", qa_loops=loops + 1)
+            self.log(f"Screenshot pre-check failed T#{t['id']} (loop {loops + 1}); sent back to {t['agent']}", g["id"], t["id"], "qa", "warn")
+            self.enqueue(g["id"], t["agent"], "ticket.work", {"feedback": "QA bug report:\n" + qa_md}, ticket_id=t["id"])
+            return
         ctx = (f"Game: {g['title']}\nTICKET #{t['id']} ({t['agent']}): {t['title']}\n{t['description']}\n"
-               f"Agent summary: {p.get('summary', '')}\n\nAutomated QA:\n{rep.markdown()}\n\nDiff vs main:\n{diff[:60000]}\n")
+               f"Agent summary: {p.get('summary', '')}\n\nAutomated QA:\n{rep.markdown()}\n\n"
+               + (("Screenshots of the running game (open each one and fail the change if anything is off-screen, "
+                   "clipped, overlapping, unreadable or hidden under the HUD):\n" + "\n".join(rep.shots) + "\n\n")
+                  if rep.shots else "")
+               + f"Diff vs main:\n{diff[:60000]}\n")
         review = self.call_agent(job, "qa", "qa.review", ctx, wt, edit=False)
         # a reviewing agent must not leave edits behind: the approved commit must be exactly what was tested
         gitops.git(wt, "reset", "-q", "--hard", "HEAD")
@@ -442,7 +456,6 @@ class Studio(SupportMixin, ManagementMixin, SetupMixin):
         qa_md = rep.markdown() + f"\n\n**QA agent:** {verdict.upper()} - {review.get('summary', '')}\n" + "".join(
             f"- [{b.get('severity', '?')}] {b.get('title', '')}: {b.get('details', '')}\n" for b in bugs if isinstance(b, dict))
         self.add_doc(g["id"], "qa_report", f"QA T#{t['id']} {'pass' if passed else 'fail'}", qa_md, "qa")
-        loops = t["qa_loops"] or 0
         if not passed and loops < self.db.geti("qa_max_loops", 3):
             self.set_ticket(t["id"], status="changes_requested", qa_loops=loops + 1)
             self.log(f"QA failed T#{t['id']} (loop {loops + 1}); bug report sent back to {t['agent']}", g["id"], t["id"], "qa", "warn")
@@ -453,10 +466,28 @@ class Studio(SupportMixin, ManagementMixin, SetupMixin):
         self.create_approval(g["id"], 3, "change", f"Merge T#{t['id']} {t['title']}" + ("" if passed else " (QA FAILED)"),
                              f"{len(changed)} files on {branch}",
                              {"ticket_id": t["id"], "branch": branch, "sha": sha, "files": changed, "diff": diff,
-                              "qa_markdown": qa_md, "qa_passed": passed, "kind": t.get("kind") or "task",
+                              "qa_markdown": qa_md, "qa_passed": passed, "shots": rep.shots, "kind": t.get("kind") or "task",
                               "feedback_items": self.linked_item_ids(t["id"]),
                               "root_cause": p.get("root_cause", ""), "regression_test": p.get("regression_test", "")},
                              t["agent"], "ticket", t["id"])
+
+    def decisions_client(self):
+        from .decisions import client_from_settings
+        return client_from_settings(self.db.settings(), self.secrets.get, self.http_transport)
+
+    def decisions_shot_check(self, rep) -> bool | None:
+        """Gemini Decisions API pre-check of the seen-it screenshots. None = off, no key, or the call failed."""
+        from .decisions import check_screenshots
+        cl = self.decisions_client()
+        if not cl:
+            return None
+        try:
+            ok, detail, _ = check_screenshots(cl, rep.shots, float(self.db.get("decisions_fail_threshold", "0.85") or 0.85))
+        except (EngineError, OSError) as e:
+            rep.add("screenshot pre-check (Decisions API)", None, f"skipped: {e}")
+            return None
+        rep.add("screenshot pre-check (Decisions API)", ok, detail)
+        return ok
 
     # ------------------------------------------------------------- approvals
     def approve(self, aid: int) -> dict:
@@ -621,7 +652,9 @@ class Studio(SupportMixin, ManagementMixin, SetupMixin):
         godot = find_godot(self.db.get("godot_bin"))
         files = gitops.git(repo, "ls-files").split()
         platform = g.get("platform") or "android"
-        rep = run_qa(repo, files, None if platform == "roblox" else godot)
+        ver = (g.get("version") or "release").replace("/", "-")
+        rep = run_qa(repo, files, None if platform == "roblox" else godot,
+                     shots_dir=(self.paths.shots / g["slug"] / f"v{ver}") if self.db.get("qa_screenshots", "1") == "1" else None)
         build = "Android export disabled in Settings"
         if platform != "android":
             build = (f"SKIPPED: {platform} builds are made on your Mac by you (Xcode / Roblox Studio / web export), "

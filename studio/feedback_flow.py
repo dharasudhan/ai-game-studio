@@ -198,11 +198,16 @@ class SupportMixin:
             return
         gid = job.get("game_id")
         groups = self.db.all("SELECT id, category, title, count FROM feedback_groups WHERE game_id IS ? ORDER BY count DESC LIMIT 30", gid)
+        dec = self.decisions_triage(rows)
+        conf = float(self.db.get("decisions_min_confidence", "0.7") or 0.7)
+        # confident "no reply needed" items are fully handled by the Decisions API: no LLM tokens for them
+        llm_rows = [r for r in rows if not (r["id"] in dec and dec[r["id"]]["needs_reply"] <= 1 - conf
+                                            and dec[r["id"]]["category_conf"] >= conf)]
         ctx = (f"Game: {self.game(gid)['title'] if gid else '(not linked to a game yet)'}\n"
                "Known issue groups (reuse a group_label when it is the same issue):\n"
                + "\n".join(f"- {g['title']} [{g['category']}, {g['count']} reports]" for g in groups)
-               + "\n\nFeedback items:\n" + self._items_block(rows) + "\n")
-        data = self.call_agent(job, "support", "support.triage", ctx, self.scratch(gid or 0))
+               + "\n\nFeedback items:\n" + self._items_block(llm_rows) + "\n")
+        data = self.call_agent(job, "support", "support.triage", ctx, self.scratch(gid or 0)) if llm_rows else {}
         res = {}
         for it in data.get("items") or []:
             try:
@@ -220,6 +225,13 @@ class SupportMixin:
             sent = sent if sent in sp.SENTIMENTS else rule["sentiment"]
             sev = str(out.get("severity", "")).lower().replace("medium", "med")
             sev = sev if sev in sp.SEVERITIES else rule["severity"]
+            d = dec.get(r["id"])
+            if d:   # calibrated Decisions answers win when confident
+                cat = d["category"] if d["category_conf"] >= conf and d["category"] in sp.CATEGORIES else cat
+                sev = d["severity"] if d["severity_conf"] >= conf else sev
+                sent = d["sentiment"] if d["sentiment_conf"] >= conf and d["sentiment"] in sp.SENTIMENTS else sent
+                if r not in llm_rows:
+                    out = {**out, "needs_reply": False}
             summary = str(out.get("summary") or r["text"][:120]).strip()[:300]
             label = str(out.get("group_label") or summary)[:80]
             self.db.update("feedback_items", r["id"], category=cat, sentiment=sent, severity=sev, summary=summary,
@@ -241,6 +253,21 @@ class SupportMixin:
         if critical:
             self.notify("feedback", f"{len(critical)} critical player report(s)", critical[0])
         self.log(f"Triaged {len(rows)} feedback item(s) into {len(touched)} group(s)", gid, agent="support")
+
+    def decisions_triage(self, rows: list[dict]) -> dict[int, dict]:
+        """Gemini Decisions API classification per item ({} when off, no key, or a call fails)."""
+        from .decisions import triage_item
+        cl = self.decisions_client()
+        out: dict[int, dict] = {}
+        if not cl:
+            return out
+        for r in rows:
+            try:
+                out[r["id"]] = triage_item(cl, r["title"] or "", r["text"] or "", r["rating"])
+            except Exception as e:  # noqa: BLE001 - never block triage on the optional check
+                self.log(f"Decisions API triage skipped for item {r['id']}: {str(e)[:200]}", r["game_id"], agent="support", level="warn")
+                break
+        return out
 
     def _gtitle(self, gid: int | None) -> str:
         if not gid:

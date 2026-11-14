@@ -30,6 +30,7 @@ class QAReport:
     passed: bool = True
     godot: str | None = None
     checks: list[dict] = field(default_factory=list)
+    shots: list[str] = field(default_factory=list)
 
     def add(self, name: str, ok: bool | None, detail: str = "") -> None:
         # ok=None means skipped (does not fail the run)
@@ -69,7 +70,8 @@ def static_checks(wt: Path, changed: list[str], rep: QAReport) -> None:
     rep.add("no generated/secret files committed", not forbidden, ", ".join(forbidden))
 
 
-def run_qa(wt: Path, changed: list[str], godot_bin: str | None, timeout: int = 300) -> QAReport:
+def run_qa(wt: Path, changed: list[str], godot_bin: str | None, timeout: int = 300,
+           shots_dir: Path | None = None) -> QAReport:
     rep = QAReport(godot=godot_bin)
     static_checks(wt, changed, rep)
     if not godot_bin:
@@ -86,7 +88,46 @@ def run_qa(wt: Path, changed: list[str], godot_bin: str | None, timeout: int = 3
         rep.add("godot unit tests", None, "tests/run_tests.gd missing")
     code, out = _run([godot_bin, "--headless", "--path", ".", "--quit-after", "120"], wt, timeout)
     rep.add("smoke: main scene runs 120 frames", code == 0 and "SCRIPT ERROR" not in out, out)
+    if shots_dir is not None:
+        ok, detail, files = capture_screens(wt, godot_bin, shots_dir)
+        rep.shots = files
+        rep.add(f"seen-it: game launched in a window, {len(files)} screenshot(s) saved", ok, detail)
     return rep
+
+
+CAPTURE_SCRIPT = Path(__file__).parent / "capture_screens.gd"
+
+
+def can_open_window() -> bool:
+    """A real (non-headless) Godot window needs macOS/Windows or an X/Wayland display."""
+    import sys
+    return sys.platform in ("darwin", "win32") or bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+
+def capture_screens(wt: Path, godot_bin: str | None, out_dir: Path, timeout: int = 120,
+                    resolution: str = "540x1170") -> tuple[bool | None, str, list[str]]:
+    """Seen-it rule: launch the game in a real window and save phone-portrait screenshots.
+    Returns (ok | None=skipped, detail, png paths)."""
+    if not godot_bin:
+        return None, "Godot not found", []
+    if not can_open_window():
+        return None, "no display to open a game window (run on the Mac)", []
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for old in out_dir.glob("shot_*.png"):
+        old.unlink()
+    tmp = Path(wt) / ".studio_capture.gd"
+    shutil.copyfile(CAPTURE_SCRIPT, tmp)
+    try:
+        code, out = _run([godot_bin, "--path", ".", "--rendering-driver", "opengl3", "--resolution", resolution,
+                          "--windowed", "-s", "res://.studio_capture.gd", "--", f"--out={out_dir}"], wt, timeout)
+    finally:
+        tmp.unlink(missing_ok=True)
+        for extra in Path(wt).glob(".studio_capture.gd*"):
+            extra.unlink(missing_ok=True)
+    files = sorted(str(p) for p in out_dir.glob("shot_*.png"))
+    ok = bool(files) and "SCRIPT ERROR" not in out
+    return ok, ("Saved: " + ", ".join(files) if files else "No screenshot saved\n" + out[-2000:]), files
 
 
 def android_env_ready() -> tuple[bool, str]:

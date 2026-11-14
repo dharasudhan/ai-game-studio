@@ -20,7 +20,7 @@ def test_setup_state_and_ui_wiring(studio):
     c = client(studio)
     s = c.get("/api/setup").json()
     assert s["complete"] is False and s["steps"][0] == "welcome" and s["steps"][-1] == "finish"
-    assert set(s["presets"]) == {"google_pro", "claude_eng", "local_only", "mixed"}
+    assert set(s["presets"]) == {"quota_saver", "google_pro", "claude_eng", "local_only", "mixed"}
     assert set(s["roles"]) == {"producer", "designer", "engineer", "artist", "qa", "marketing", "analyst", "support", "bugfixer"}
     ids = {p["id"] for p in s["providers"]}
     assert {"agy", "claude_code", "codex", "genai", "anthropic", "openai", "openrouter", "ollama", "lmstudio"} <= ids
@@ -143,3 +143,21 @@ def test_identity_validation_and_finish_summary(studio):
     g = studio.game(gid)
     assert g["package"] == "com.ottranstudios.orbit_hopper"
     assert "Studio: Ottran Studios | package ids com.ottranstudios.<slug>" in studio.db.one("SELECT prompt FROM runs ORDER BY id LIMIT 1")["prompt"]
+
+
+def test_quota_saver_preset(studio):
+    q = preset_roles("quota_saver", have_key=lambda k: k == "GEMINI_API_KEY")
+    assert q["engineer"] == q["bugfixer"] == {"engine": "agy", "model": ""}
+    assert q["qa"] == {"engine": "ollama", "model": "qwen2.5-coder:7b"}
+    assert all(q[r] == {"engine": "genai", "model": "gemini-3.8-flash"}
+               for r in ("producer", "designer", "artist", "marketing", "support", "analyst"))
+    nokey = preset_roles("quota_saver", have_key=lambda k: False)
+    assert nokey["designer"]["engine"] == "ollama" and nokey["engineer"]["engine"] == "agy"
+    c = client(studio)
+    assert c.get("/api/setup").json()["recommended"] == "quota_saver"
+    studio.db.set("daily_run_cap", "0")
+    c.post("/api/setup/preset", json={"preset": "quota_saver"}, headers=H)
+    assert studio.db.settings()["daily_run_cap"] == "40"
+    studio.db.set("daily_run_cap", "12")   # an owner-set cap is kept
+    c.post("/api/setup/preset", json={"preset": "quota_saver"}, headers=H)
+    assert studio.db.settings()["daily_run_cap"] == "12"

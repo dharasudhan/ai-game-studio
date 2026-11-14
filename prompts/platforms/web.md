@@ -1,6 +1,9 @@
 # Platform track: Web (browser)
-- Engine: Godot 4.7.x HTML5 export (single-threaded unless the host sends COOP/COEP headers) or a light
-  JS engine for tiny games. Mobile browsers and desktop, touch + mouse + keyboard.
+- Engine: small 2D web games default to melonJS (github.com/melonjs/melonJS, MIT, about 250 KB, WebGPU/WebGL2/
+  Canvas2D, Tiled maps, WebAudio). Bundle it from npm or the repo, never load it from a CDN. Credit it in
+  CREDITS.md. Use the Godot 4.7.x HTML5 export only for 3D, for heavy games, or for a port of an existing
+  Godot game. It is single-threaded unless the host sends COOP/COEP headers.
+- Mobile browsers and desktop, touch + mouse + keyboard.
 - Hosting: ottranstudios.com/<slug>/ (Cloudflare Pages) and/or portals such as Poki, CrazyGames, itch.io.
   Each portal has its own SDK, ad rules and size limits: read the portal's current developer docs first.
 - Performance: small first download (aim under 20 MB, show the Ottran loader at once), load under 5 s on

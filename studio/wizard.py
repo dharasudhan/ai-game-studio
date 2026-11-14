@@ -107,7 +107,15 @@ def check_prereqs(s: dict, run: Run | None = None, find: Callable[[str], str | N
 
 
 # ------------------------------------------------------------------ presets
+QUOTA_SAVER_RUN_CAP = 40   # runs/day the quota saver sets when no cap is set yet
+
 PRESETS: dict[str, dict] = {
+    "quota_saver": {"label": "Save my AI Pro quota (recommended)",
+                    "blurb": "Only Engineer and Bug Fixer use Antigravity (AI Pro). Producer, Designer, Artist, Marketing, "
+                             "Support and Analyst use the Gemini API free tier (or Ollama when no GEMINI_API_KEY is set); "
+                             "QA uses Ollama Qwen2.5-Coder 7B. Sets a daily cap of 40 runs so the studio paces itself, and with a "
+                             "Gemini key turns on Decisions API checks for support triage and QA screenshots.",
+                    "providers": ["agy", "genai|ollama", "ollama"]},
     "google_pro": {"label": "All Google AI Pro",
                    "blurb": "Every role on Antigravity CLI with your AI Pro login. No API bills.",
                    "providers": ["agy"]},
@@ -125,10 +133,18 @@ PRESETS: dict[str, dict] = {
 }
 
 
-def preset_roles(preset: str, have_bin: Callable[[str], bool] | None = None) -> dict[str, dict]:
+def preset_roles(preset: str, have_bin: Callable[[str], bool] | None = None,
+                 have_key: Callable[[str], bool] | None = None) -> dict[str, dict]:
     if preset not in PRESETS:
         raise ValueError(f"unknown preset '{preset}' (one of {', '.join(PRESETS)})")
     have = have_bin or (lambda b: bool(which(b)))
+    if preset == "quota_saver":
+        key = have_key or (lambda k: bool(os.environ.get(k)))
+        local = {"engine": "ollama", "model": "qwen2.5-coder:7b"}
+        writer = {"engine": "genai", "model": "gemini-3.8-flash"} if (key("GEMINI_API_KEY") or key("GOOGLE_API_KEY")) \
+            else dict(local)
+        return {r: ({"engine": "agy", "model": ""} if r in ("engineer", "bugfixer")
+                    else dict(local) if r == "qa" else dict(writer)) for r in ROLES}
     claude = {"engine": "claude_code", "model": "claude-sonnet-5-5"} if have("claude") else \
         {"engine": "anthropic", "model": "claude-sonnet-5-5"}
     if preset == "google_pro":
@@ -196,9 +212,15 @@ class SetupMixin:
         return self.roles_config()
 
     def apply_preset(self, preset: str, have_bin: Callable[[str], bool] | None = None) -> dict[str, dict]:
-        roles = preset_roles(preset, have_bin)
+        roles = preset_roles(preset, have_bin, lambda k: bool(self.secrets.get(k)))
         self.apply_roles(roles)
         self.db.set("setup_preset", preset)
+        if preset == "quota_saver" and not int(float(self.db.settings().get("daily_run_cap") or 0)):
+            self.db.set("daily_run_cap", str(QUOTA_SAVER_RUN_CAP))
+            self.log(f"Setup: daily run cap set to {QUOTA_SAVER_RUN_CAP} (quota saver)", agent="owner")
+        if preset == "quota_saver" and (self.secrets.get("GEMINI_API_KEY") or self.secrets.get("GOOGLE_API_KEY")):
+            self.db.set("decisions_checks", "1")
+            self.log("Setup: Gemini Decisions API checks turned on (quota saver)", agent="owner")
         self.log(f"Setup: provider preset '{PRESETS[preset]['label']}' applied to all roles", agent="owner")
         return roles
 
@@ -254,7 +276,7 @@ class SetupMixin:
         s = self.db.settings()
         return {"complete": s.get("setup_complete") == "1", "step": s.get("setup_step", "welcome"), "steps": STEPS,
                 "presets": {k: {"label": v["label"], "blurb": v["blurb"]} for k, v in PRESETS.items()},
-                "preset": s.get("setup_preset", ""), "roles": self.roles_config(), "default_engine": s.get("engine", "agy"),
+                "preset": s.get("setup_preset", ""), "recommended": "quota_saver", "roles": self.roles_config(), "default_engine": s.get("engine", "agy"),
                 "identity": {k: s.get(k, "") for k in ("studio_name", "package_prefix", "contact_email", "studio_website",
                                                         "github_owner", "play_account_type")},
                 "providers": self.providers_info(), "keys": self.keys_status()}

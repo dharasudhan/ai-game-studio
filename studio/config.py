@@ -23,6 +23,10 @@ class Paths:
         return self.home / "games"
 
     @property
+    def shots(self) -> Path:
+        return self.home / "shots"
+
+    @property
     def worktrees(self) -> Path:
         return self.home / "data" / "worktrees"
 
@@ -113,6 +117,12 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "engine_timeout_seconds": "900",
     "qa_max_loops": "3",
     "qa_android_export_on_release": "1",
+    "qa_screenshots": "1",
+    # Gemini Decisions API (1.6.0): cheap classification, needs GEMINI_API_KEY; off = 1.5.x behaviour
+    "decisions_checks": "0",
+    "decisions_model": "gemini-decision-1",
+    "decisions_min_confidence": "0.7",
+    "decisions_fail_threshold": "0.85",
     "monthly_budget": "0",
     "currency": "EUR",
     "standup_enabled": "1",
@@ -202,6 +212,11 @@ SETTINGS_SCHEMA: dict[str, dict] = {
     "java_home": {"group": "Godot & Android", "type": "str", "help": "JDK 17 home (empty = JAVA_HOME)"},
     "android_export_dir": {"group": "Godot & Android", "type": "str", "help": "Export folder inside the game repo"},
     "qa_android_export_on_release": {"group": "Godot & Android", "type": "bool", "help": "Debug APK export during release QA"},
+    "qa_screenshots": {"group": "Godot & Android", "type": "bool", "help": "Seen-it rule: launch the game in a window during QA and attach phone-size screenshots to Gate 3"},
+    "decisions_checks": {"group": "Engines", "type": "bool", "help": "Gemini Decisions API (needs GEMINI_API_KEY): sorts player reports and pre-checks QA screenshots without an LLM run"},
+    "decisions_model": {"group": "Engines", "type": "str", "help": "Decisions model (gemini-decision-1)"},
+    "decisions_min_confidence": {"group": "Engines", "type": "str", "help": "Use a Decisions answer only at or above this confidence (0-1)"},
+    "decisions_fail_threshold": {"group": "Engines", "type": "str", "help": "Screenshot pre-check fails at or above this probability (0.01-0.99)"},
     "qa_max_loops": {"group": "Godot & Android", "type": "int", "help": "QA bounce-backs before you decide anyway"},
     "standup_enabled": {"group": "Schedule", "type": "bool", "help": "Daily Producer standup"},
     "standup_time": {"group": "Schedule", "type": "time", "help": "Daily standup time (HH:MM, local)"},
